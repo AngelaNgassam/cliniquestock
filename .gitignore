@@ -1,9 +1,11 @@
 # Python / Django
 backend/venv/
 backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
 backend/*.pyc
 backend/.env
-backend/db.sqlite3
+backend/db.postegres
 
 # React / Node
 frontend/node_modules/

@@ -1,0 +1,1 @@
+# Application alertes (package Django).
