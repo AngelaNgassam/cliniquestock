@@ -1,0 +1,1 @@
+# Paquet cliniqueApp (applications métier).

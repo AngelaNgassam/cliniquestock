@@ -12,20 +12,38 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 
+from decouple import Config, RepositoryEnv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+_env_path = BASE_DIR / ".env"
+if _env_path.is_file():
+    _env_encoding = None
+    for _enc in ("utf-8", "utf-8-sig", "cp1252"):
+        try:
+            _env_path.read_text(encoding=_enc)
+            _env_encoding = _enc
+            break
+        except UnicodeDecodeError:
+            continue
+    if _env_encoding is None:
+        _env_encoding = "utf-8"
+    config = Config(RepositoryEnv(str(_env_path), encoding=_env_encoding))
+else:
+    from decouple import config
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=b@t5ii7pi7*-mt=2n5e!$)j$d=)llfif$@=0u#05!**e-dgbm'
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', cast=bool, default=True)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=lambda v: [s.strip() for s in v.split(',') if s.strip()], default='')
 
 
 # Application definition
@@ -37,6 +55,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'cliniqueApp.users',
+    'cliniqueApp.medicaments',
+    'cliniqueApp.commandes',
+    'cliniqueApp.stock',
+    'cliniqueApp.alertes',
+    'cliniqueApp.rapports',
 ]
 
 MIDDLEWARE = [
@@ -49,7 +73,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'config.urls'
+ROOT_URLCONF = 'clinique_projet.urls'
 
 TEMPLATES = [
     {
@@ -66,16 +90,32 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+WSGI_APPLICATION = 'clinique_projet.wsgi.application'
 
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+#
+# Mot de passe : decouple lit d'abord os.environ, puis le .env. Une variable
+# Windows nommée DB_PASSWORD (souvent définie ailleurs) écrase alors le .env
+# et la connexion échoue ; libpq peut renvoyer un message en CP1252 → erreur
+# UnicodeDecodeError dans psycopg2 au lieu d'OperationalError.
+# CLINIQUE_DB_PASSWORD dans le .env évite ce conflit de nom.
+_db_password = config('CLINIQUE_DB_PASSWORD', default='').strip()
+if not _db_password:
+    _db_password = config('DB_PASSWORD', default='postgres')
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='cliniquestock'),
+        'USER': config('DB_USER', default='postgres'),
+        'PASSWORD': _db_password,
+        'HOST': config('DB_HOST', default='127.0.0.1'),
+        'PORT': config('DB_PORT', default='5432'),
+        'OPTIONS': {
+            'client_encoding': 'UTF8',
+        },
     }
 }
 
