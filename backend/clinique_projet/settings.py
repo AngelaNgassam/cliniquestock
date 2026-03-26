@@ -14,6 +14,8 @@ from pathlib import Path
 
 from decouple import Config, RepositoryEnv
 
+from datetime import timedelta
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -46,6 +48,17 @@ DEBUG = config('DEBUG', cast=bool, default=True)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=lambda v: [s.strip() for s in v.split(',') if s.strip()], default='')
 
 
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME':  timedelta(hours=8),    # expire après 8h
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),     # refresh valable 7 jours
+    'ROTATE_REFRESH_TOKENS':  True,   # nouveau refresh à chaque utilisation
+    'BLACKLIST_AFTER_ROTATION': True, # ancien refresh invalidé (sécurité)
+    'ALGORITHM': 'HS256',
+    'AUTH_HEADER_TYPES': ('Bearer',), # Authorization: Bearer <token>
+}
+
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -61,10 +74,16 @@ INSTALLED_APPS = [
     'cliniqueApp.stock',
     'cliniqueApp.alertes',
     'cliniqueApp.rapports',
+    # Packages tiers
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',  # pour le logout
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # ajouter ici pour gérer les CORS
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -160,3 +179,19 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # React Vite
+    "http://localhost:3000",
+]
+
+AUTH_USER_MODEL = 'users.Utilisateur'
