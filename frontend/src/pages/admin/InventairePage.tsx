@@ -1,0 +1,271 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Box, Typography, Button, TextField, InputAdornment,
+  Select, MenuItem, FormControl, Chip, IconButton,
+  Table, TableBody, TableCell, TableContainer, TableHead,
+  TableRow, Paper, Tooltip, Pagination, CircularProgress,
+  Card, Alert,
+} from '@mui/material';
+import {
+  Search, Add, Download, Visibility, Edit, Delete,
+  FilterList, Refresh, Inventory2, Warning, Error as ErrorIcon,
+  CheckCircle,
+} from '@mui/icons-material';
+import api from '../../services/authService';
+
+interface Medicament {
+  id: number;
+  nom_commercial: string;
+  dci: string;
+  forme_galenique: string;
+  dosage: string;
+  unite_stock: string;
+  prix_unitaire: string;
+  seuil_alerte: number;
+  code_barres: string;
+  est_actif: boolean;
+  categorie: number;
+  categorie_nom: string;
+}
+
+interface PaginatedResponse {
+  count: number;
+  results: Medicament[];
+}
+
+// KPI Card
+function KpiCard({ title, value, sub, color, icon }: any) {
+  return (
+    <Card elevation={0} sx={{
+      p: 2.5, border: '1px solid #E3F2FD', borderRadius: 3,
+      flex: 1, minWidth: 180,
+    }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box>
+          <Typography variant="body2" color="text.secondary" fontWeight={500}>{title}</Typography>
+          <Typography variant="h4" fontWeight={900} color={color || '#0D47A1'} sx={{ my: 0.5 }}>
+            {value}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">{sub}</Typography>
+        </Box>
+        <Box sx={{
+          width: 48, height: 48, borderRadius: 2,
+          bgcolor: `${color || '#2196F3'}18`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {icon}
+        </Box>
+      </Box>
+    </Card>
+  );
+}
+
+export default function InventairePage() {
+  const navigate = useNavigate();
+  const [medicaments, setMedicaments] = useState<Medicament[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [filterStatut, setFilterStatut] = useState('tous');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const fetchMedicaments = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (filterStatut === 'actif') params.append('est_actif', 'true');
+      if (filterStatut === 'inactif') params.append('est_actif', 'false');
+      params.append('page', String(page));
+
+      const res = await api.get<PaginatedResponse>(`/medicaments/?${params}`);
+      setMedicaments(res.data.results);
+      setTotal(res.data.count);
+      setTotalPages(Math.ceil(res.data.count / 20));
+    } catch {
+      setError('Erreur lors du chargement des médicaments.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchMedicaments(); }, [search, filterStatut, page]);
+
+  const handleArchiver = async (id: number, nom: string) => {
+    if (!confirm(`Archiver ${nom} ?`)) return;
+    await api.post(`/medicaments/${id}/archiver/`);
+    fetchMedicaments();
+  };
+
+  const getStatutChip = (med: Medicament) => {
+    if (!med.est_actif) return <Chip label="Archivé" size="small" sx={{ bgcolor: '#ECEFF1', color: '#607D8B', fontWeight: 600 }} />;
+    return <Chip label="Actif" size="small" sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontWeight: 600 }} />;
+  };
+
+  const actifs = medicaments.filter(m => m.est_actif).length;
+  const inactifs = medicaments.filter(m => !m.est_actif).length;
+
+  return (
+    <Box>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h4" fontWeight={800} color="#0D47A1">
+            Inventaire des Médicaments
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Gérez vos stocks, surveillez les seuils d'alerte et suivez les dates de péremption.
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Button variant="outlined" startIcon={<Download />}
+            sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>
+            Exporter (CSV)
+          </Button>
+          <Button variant="contained" startIcon={<Add />}
+            onClick={() => navigate('/admin/inventaire/nouveau')}
+            sx={{
+              borderRadius: 2, textTransform: 'none', fontWeight: 700,
+              background: 'linear-gradient(135deg, #2196F3, #1565C0)',
+              boxShadow: '0 4px 15px rgba(33,150,243,0.3)',
+            }}>
+            Ajouter un médicament
+          </Button>
+        </Box>
+      </Box>
+
+      {/* KPIs */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+        <KpiCard title="Total Médicaments" value={total} sub="+12 depuis le mois dernier"
+          color="#2196F3" icon={<Inventory2 sx={{ color: '#2196F3' }} />} />
+        <KpiCard title="Médicaments Actifs" value={actifs} sub="En stock"
+          color="#4CAF50" icon={<CheckCircle sx={{ color: '#4CAF50' }} />} />
+        <KpiCard title="Archivés" value={inactifs} sub="Hors stock"
+          color="#FF9800" icon={<Warning sx={{ color: '#FF9800' }} />} />
+        <KpiCard title="Alertes Stock" value="—" sub="Vérification en cours"
+          color="#F44336" icon={<ErrorIcon sx={{ color: '#F44336' }} />} />
+      </Box>
+
+      {/* Filtres */}
+      <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 2, mb: 3 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            placeholder="Rechercher par nom, code ou DCI..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            size="small"
+            sx={{ flex: 1, minWidth: 250 }}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><Search sx={{ color: '#90A4AE' }} /></InputAdornment>,
+            }}
+          />
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <Select value={filterStatut} onChange={(e) => { setFilterStatut(e.target.value); setPage(1); }}>
+              <MenuItem value="tous">Tous les statuts</MenuItem>
+              <MenuItem value="actif">Actifs</MenuItem>
+              <MenuItem value="inactif">Archivés</MenuItem>
+            </Select>
+          </FormControl>
+          <Tooltip title="Actualiser">
+            <IconButton onClick={fetchMedicaments} sx={{ color: '#2196F3' }}>
+              <Refresh />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Card>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {/* Tableau */}
+      <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3 }}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: '#F8FBFF' }}>
+                {['Médicament', 'Catégorie', 'Dosage / Forme', 'Prix Unitaire', 'Seuil Alerte', 'Statut', 'Actions'].map((h) => (
+                  <TableCell key={h} sx={{ fontWeight: 700, color: '#546E7A', fontSize: 12, py: 1.5 }}>{h}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
+                    <CircularProgress size={32} />
+                  </TableCell>
+                </TableRow>
+              ) : medicaments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                    Aucun médicament trouvé.
+                  </TableCell>
+                </TableRow>
+              ) : medicaments.map((med) => (
+                <TableRow key={med.id} hover sx={{ '&:hover': { bgcolor: '#F8FBFF' } }}>
+                  <TableCell>
+                    <Typography fontWeight={700} fontSize={14} color="#0D47A1">{med.nom_commercial}</Typography>
+                    <Typography variant="caption" color="text.secondary">{med.dci} • {med.code_barres}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={med.categorie_nom || '—'} size="small"
+                      sx={{ bgcolor: '#E3F2FD', color: '#1565C0', fontWeight: 600 }} />
+                  </TableCell>
+                  <TableCell>
+                    <Typography fontSize={13}>{med.dosage}</Typography>
+                    <Typography variant="caption" color="text.secondary">{med.forme_galenique}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography fontWeight={600} color="#1565C0">{Number(med.prix_unitaire).toLocaleString()} FCFA</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography fontWeight={600} color={med.seuil_alerte > 50 ? '#F44336' : '#4CAF50'}>
+                      {med.seuil_alerte} unités
+                    </Typography>
+                  </TableCell>
+                  <TableCell>{getStatutChip(med)}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Tooltip title="Voir détails">
+                        <IconButton size="small" sx={{ color: '#2196F3' }}
+                          onClick={() => navigate(`/admin/inventaire/${med.id}`)}>
+                          <Visibility fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Modifier">
+                        <IconButton size="small" sx={{ color: '#FF9800' }}
+                          onClick={() => navigate(`/admin/inventaire/${med.id}/modifier`)}>
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Archiver">
+                        <IconButton size="small" sx={{ color: '#F44336' }}
+                          onClick={() => handleArchiver(med.id, med.nom_commercial)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 3, py: 2, borderTop: '1px solid #E3F2FD' }}>
+            <Typography variant="body2" color="text.secondary">
+              Affichage de {((page - 1) * 20) + 1} à {Math.min(page * 20, total)} sur {total} médicaments
+            </Typography>
+            <Pagination count={totalPages} page={page} onChange={(_, v) => setPage(v)}
+              color="primary" size="small" />
+          </Box>
+        )}
+      </Card>
+    </Box>
+  );
+}

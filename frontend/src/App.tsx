@@ -5,10 +5,16 @@ import theme from './styles/theme';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import PrivateRoute from './components/PrivateRoute';
+import MainLayout from './components/layout/MainLayout';
+import InventairePage from './pages/admin/InventairePage';
 
-// Placeholders dashboard (à développer plus tard)
-const DashboardAdmin = () => <div style={{padding:40, fontSize:24}}>Dashboard Admin 🏥</div>;
-const DashboardPharmacien = () => <div style={{padding:40, fontSize:24}}>Dashboard Pharmacien 💊</div>;
+const DashboardAdmin = () => {
+  return (
+    <div style={{ padding: 20 }}>
+      <h2 style={{ color: '#0D47A1' }}>Tableau de bord — En construction 🏗️</h2>
+    </div>
+  );
+};
 
 export default function App() {
   return (
@@ -18,12 +24,20 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
+
+          {/* Routes Admin avec layout */}
           <Route path="/dashboard/admin" element={
-            <PrivateRoute><DashboardAdmin /></PrivateRoute>
-          } />
-          <Route path="/dashboard/pharmacien" element={
-            <PrivateRoute><DashboardPharmacien /></PrivateRoute>
-          } />
+            <PrivateRoute><MainLayout /></PrivateRoute>
+          }>
+            <Route index element={<DashboardAdmin />} />
+          </Route>
+
+          <Route path="/admin" element={
+            <PrivateRoute><MainLayout /></PrivateRoute>
+          }>
+            <Route path="inventaire" element={<InventairePage />} />
+          </Route>
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
