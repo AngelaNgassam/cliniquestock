@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="rapport",
             constraint=models.CheckConstraint(
-                check=models.Q(periode_fin__gte=models.F("periode_debut")),
+                condition=models.Q(periode_fin__gte=models.F("periode_debut")),
                 name="rapport_periode_fin_gte_periode_debut",
             ),
         ),
