@@ -33,11 +33,11 @@ class LotStock(models.Model):
                 name="unique_lot_par_medicament",
             ),
             models.CheckConstraint(
-                check=models.Q(prix_achat__gte=0),
+                condition=models.Q(prix_achat__gte=0),
                 name="lot_stock_prix_achat_gte_0",
             ),
             models.CheckConstraint(
-                check=models.Q(date_peremption__gte=models.F("date_reception")),
+                condition=models.Q(date_peremption__gte=models.F("date_reception")),
                 name="lot_stock_peremption_gte_reception",
             ),
         ]
@@ -137,7 +137,7 @@ class LigneReception(models.Model):
         db_table = "ligne_reception"
         constraints = [
             models.CheckConstraint(
-                check=models.Q(prix_achat_reel__gte=0),
+                condition=models.Q(prix_achat_reel__gte=0),
                 name="ligne_reception_prix_gte_0",
             ),
         ]
@@ -199,7 +199,7 @@ class Inventaire(models.Model):
         ordering = ["-date_debut"]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(date_fin__isnull=True) | models.Q(date_fin__gte=models.F("date_debut")),
+                condition=models.Q(date_fin__isnull=True) | models.Q(date_fin__gte=models.F("date_debut")),
                 name="inventaire_date_fin_gte_date_debut",
             ),
         ]

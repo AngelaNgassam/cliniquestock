@@ -51,7 +51,7 @@ class Rapport(models.Model):
         ordering = ["-date_generation"]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(periode_fin__gte=models.F("periode_debut")),
+                condition=models.Q(periode_fin__gte=models.F("periode_debut")),
                 name="rapport_periode_fin_gte_periode_debut",
             ),
         ]
