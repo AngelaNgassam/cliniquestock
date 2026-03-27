@@ -56,7 +56,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='commande',
-            constraint=models.CheckConstraint(check=models.Q(('montant_total__gte', 0)), name='commande_montant_total_gte_0'),
+            constraint=models.CheckConstraint(condition=models.Q(('montant_total__gte', 0)), name='commande_montant_total_gte_0'),
         ),
         migrations.AddIndex(
             model_name='bonretourfournisseur',
@@ -72,10 +72,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='lignecommande',
-            constraint=models.CheckConstraint(check=models.Q(('prix_unitaire_estime__gte', 0)), name='ligne_commande_prix_gte_0'),
+            constraint=models.CheckConstraint(condition=models.Q(('prix_unitaire_estime__gte', 0)), name='ligne_commande_prix_gte_0'),
         ),
         migrations.AddConstraint(
             model_name='lignecommande',
-            constraint=models.CheckConstraint(check=models.Q(('quantite_recue__lte', models.F('quantite_commandee'))), name='ligne_commande_recue_lte_commandee'),
+            constraint=models.CheckConstraint(condition=models.Q(('quantite_recue__lte', models.F('quantite_commandee'))), name='ligne_commande_recue_lte_commandee'),
         ),
     ]

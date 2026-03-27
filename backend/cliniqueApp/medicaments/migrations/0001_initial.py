@@ -49,6 +49,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='medicament',
-            constraint=models.CheckConstraint(check=models.Q(('prix_unitaire__gte', 0)), name='medicament_prix_unitaire_gte_0'),
+            constraint=models.CheckConstraint(condition=models.Q(('prix_unitaire__gte', 0)), name='medicament_prix_unitaire_gte_0'),
         ),
     ]
