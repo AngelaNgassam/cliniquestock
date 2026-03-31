@@ -56,13 +56,13 @@ function KpiCard({ title, value, sub, color, icon }: {
 export default function InventairePage() {
   const navigate = useNavigate();
   const [medicaments, setMedicaments] = useState<Medicament[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [search, setSearch]           = useState('');
   const [filterStatut, setFilterStatut] = useState('tous');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [page, setPage]               = useState(1);
+  const [totalPages, setTotalPages]   = useState(1);
+  const [total, setTotal]             = useState(0);
 
   const fetchMedicaments = async () => {
     setLoading(true);
@@ -70,7 +70,7 @@ export default function InventairePage() {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
-      if (filterStatut === 'actif') params.append('est_actif', 'true');
+      if (filterStatut === 'actif')   params.append('est_actif', 'true');
       if (filterStatut === 'inactif') params.append('est_actif', 'false');
       params.append('page', String(page));
 
@@ -93,17 +93,33 @@ export default function InventairePage() {
 
   useEffect(() => { fetchMedicaments(); }, [search, filterStatut, page]);
 
-  const handleArchiver = async (id: number, nom: string) => {
-    if (!confirm(`Archiver "${nom}" ?`)) return;
+  // Remplace handleArchiver par cette version
+  const handleToggleArchivage = async (med: Medicament) => {
+    const action   = med.est_actif ? 'archiver' : 'restaurer';
+    const message  = med.est_actif
+      ? `Archiver "${med.nom_commercial}" ?`
+      : `Désarchiver "${med.nom_commercial}" et le remettre en stock ?`;
+
+    if (!confirm(message)) return;
+
     try {
-      await api.post(`/medicaments/${id}/archiver/`);
+      if (med.est_actif) {
+        await api.post(`/medicaments/${med.id}/archiver/`);
+      } else {
+        await api.post(`/medicaments/${med.id}/restaurer/`);
+      }
       fetchMedicaments();
     } catch {
-      alert('Erreur lors de l\'archivage.');
+      alert(`Erreur lors de l'opération ${action}.`);
     }
   };
 
-  const actifs = medicaments.filter((m) => m.est_actif).length;
+  // ✅ Navigation vers la page détail
+  const handleVoirDetail = (id: number) => {
+    navigate(`/admin/inventaire/${id}`);
+  };
+
+  const actifs   = medicaments.filter((m) => m.est_actif).length;
   const inactifs = medicaments.filter((m) => !m.est_actif).length;
 
   return (
@@ -121,7 +137,7 @@ export default function InventairePage() {
         <Box sx={{ display: 'flex', gap: 1.5 }}>
           <Button variant="outlined" startIcon={<Download />}
             sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>
-            Exportateur (CSV)
+            Exporter (CSV)
           </Button>
           <Button variant="contained" startIcon={<Add />}
             onClick={() => navigate('/admin/inventaire/nouveau')}
@@ -187,7 +203,7 @@ export default function InventairePage() {
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F8FBFF' }}>
-                {['Médicament', 'Catégorie', 'Dosage / Forme', 'Prix Unitaire', 'Seuil Alerte', 'Statut', 'Actes'].map((h) => (
+                {['Médicament', 'Catégorie', 'Dosage / Forme', 'Prix Unitaire', 'Seuil Alerte', 'Statut', 'Actions'].map((h) => (
                   <TableCell key={h} sx={{ fontWeight: 700, color: '#546E7A', fontSize: 12, py: 1.5 }}>
                     {h}
                   </TableCell>
@@ -249,9 +265,13 @@ export default function InventairePage() {
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {/* ✅ Bouton œil corrigé */}
                       <Tooltip title="Voir détails">
-                        <IconButton size="small" sx={{ color: '#2196F3' }}
-                          onClick={() => navigate(`/admin/inventaire/${med.id}`)}>
+                        <IconButton
+                          size="small"
+                          sx={{ color: '#2196F3' }}
+                          onClick={() => handleVoirDetail(med.id)}
+                        >
                           <Visibility fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -261,10 +281,13 @@ export default function InventairePage() {
                           <Edit fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Archiver">
-                        <IconButton size="small" sx={{ color: '#F44336' }}
-                          onClick={() => handleArchiver(med.id, med.nom_commercial)}>
-                          <Delete fontSize="small" />
+                      <Tooltip title={med.est_actif ? 'Archiver' : 'Désarchiver'}>
+                        <IconButton
+                          size="small"
+                          sx={{ color: med.est_actif ? '#F44336' : '#4CAF50' }}
+                          onClick={() => handleToggleArchivage(med)}
+                        >
+                          {med.est_actif ? <Delete fontSize="small" /> : <Refresh fontSize="small" />}
                         </IconButton>
                       </Tooltip>
                     </Box>
