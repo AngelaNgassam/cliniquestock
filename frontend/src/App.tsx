@@ -8,6 +8,7 @@ import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './components/layout/MainLayout';
 import InventairePage from './pages/admin/InventairePage';
 import MedicamentFormPage from './pages/admin/MedicamentFormPage';
+import MedicamentDetailPage from './pages/admin/MedicamentDetailPage';
 
 const DashboardAdmin = () => (
   <div style={{ padding: 20 }}>
@@ -35,7 +36,15 @@ export default function App() {
           }>
             <Route path="inventaire" element={<InventairePage />} />
             <Route path="inventaire/nouveau" element={<MedicamentFormPage />} />
+            {/* ✅ détail AVANT :id/modifier pour éviter conflit de route */}
+            <Route path="inventaire/:id" element={<MedicamentDetailPage />} />
             <Route path="inventaire/:id/modifier" element={<MedicamentFormPage />} />
+          </Route>
+
+          <Route path="/pharmacien" element={
+            <PrivateRoute><MainLayout /></PrivateRoute>
+          }>
+            <Route path="inventaire/:id" element={<MedicamentDetailPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

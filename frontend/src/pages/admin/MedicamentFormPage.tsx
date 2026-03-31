@@ -14,6 +14,9 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import toast, { Toaster } from 'react-hot-toast';
 import { medicamentService } from '../../services/medicamentService';
 import type { MedicamentPayload, Categorie } from '../../services/medicamentService';
+// ✅ Import du service barcode
+import { fetchMedicamentByBarcode } from '../../services/barcodeService';
+import { useAuthStore } from '../../store/authStore';
 
 const FORMES = [
   'Comprimé', 'Gélule', 'Sirop', 'Injectable', 'Crème',
@@ -63,17 +66,20 @@ function Section({ icon, title, subtitle, children }: {
 }
 
 export default function MedicamentFormPage() {
-  const navigate = useNavigate();
-  const { id } = useParams();
-  const isEdit = Boolean(id);
+  const navigate    = useNavigate();
+  const { id }      = useParams();
+  const isEdit      = Boolean(id);
+  // ✅ Récupérer le token depuis le store
+  const token       = useAuthStore((s) => s.token);
 
-  const [categories, setCategories] = useState<Categorie[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingInit, setLoadingInit] = useState(isEdit);
+  const [categories,   setCategories]   = useState<Categorie[]>([]);
+  const [loading,      setLoading]      = useState(false);
+  const [loadingInit,  setLoadingInit]  = useState(isEdit);
   const [doublonAlert, setDoublonAlert] = useState('');
-  const [scanOpen, setScanOpen] = useState(false);
+  const [scanOpen,     setScanOpen]     = useState(false);
+  const [fetchingInfo, setFetchingInfo] = useState(false); // ✅ loading pendant lookup
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
-  const scanDivId = 'qr-scanner-div';
+  const scanDivId  = 'qr-scanner-div';
 
   const {
     control, handleSubmit, setValue,
@@ -95,31 +101,67 @@ export default function MedicamentFormPage() {
     if (isEdit && id) {
       medicamentService.getById(Number(id)).then((res) => {
         const m = res.data;
-        setValue('nom_commercial', m.nom_commercial);
-        setValue('dci', m.dci);
-        setValue('forme_galenique', m.forme_galenique);
-        setValue('dosage', m.dosage);
-        setValue('unite_stock', m.unite_stock);
-        setValue('prix_unitaire', m.prix_unitaire);
-        setValue('seuil_alerte', m.seuil_alerte);
-        setValue('conditions_stockage', m.conditions_stockage || '');
+        setValue('nom_commercial',             m.nom_commercial);
+        setValue('dci',                        m.dci);
+        setValue('forme_galenique',            m.forme_galenique);
+        setValue('dosage',                     m.dosage);
+        setValue('unite_stock',                m.unite_stock);
+        setValue('prix_unitaire',              m.prix_unitaire);
+        setValue('seuil_alerte',               m.seuil_alerte);
+        setValue('conditions_stockage',        m.conditions_stockage || '');
         setValue('indications_therapeutiques', m.indications_therapeutiques || '');
-        setValue('code_barres', m.code_barres);
-        setValue('categorie', m.categorie);
+        setValue('code_barres',                m.code_barres);
+        setValue('categorie',                  m.categorie);
         setLoadingInit(false);
       });
     }
   }, [id, isEdit, setValue]);
 
-  // ── Scanner ──────────────────────────────────────────────────────────────
-  const openScanner = () => {
-    setScanOpen(true);
+  // ── ✅ Auto-remplissage après scan ────────────────────────────────────────
+  const handleBarcodeDetected = async (code: string) => {
+    setValue('code_barres', code);
+    checkDoublon(code);
+    closeScanner();
+
+    setFetchingInfo(true);
+    try {
+      const info = await fetchMedicamentByBarcode(code, token ?? '');
+
+      if (info.nom_commercial)
+        setValue('nom_commercial', info.nom_commercial);
+      if (info.dci)
+        setValue('dci', info.dci);
+      if (info.forme_galenique)
+        setValue('forme_galenique', info.forme_galenique);
+      if (info.conditions_stockage)
+        setValue('conditions_stockage', info.conditions_stockage);
+      if (info.indications_therapeutiques)
+        setValue('indications_therapeutiques', info.indications_therapeutiques);
+
+      // Toast selon la source
+      if (info.source === 'catalogue') {
+        toast.success('✅ Médicament trouvé dans le catalogue ! Champs remplis automatiquement.');
+      } else if (info.source === 'rxnorm') {
+        toast('🔵 DCI trouvée via RxNorm. Complétez les autres champs.', {
+          icon: 'ℹ️',
+          style: { background: '#E3F2FD', color: '#0D47A1' },
+        });
+      } else {
+        toast('📋 Nouveau médicament — remplissez les informations manuellement.', {
+          icon: '📝',
+          style: { background: '#F5F5F5', color: '#333' },
+        });
+      }
+    } finally {
+      setFetchingInfo(false);
+    }
   };
 
-  // On démarre le scanner seulement quand le div est monté
+  // ── Scanner ───────────────────────────────────────────────────────────────
+  const openScanner = () => setScanOpen(true);
+
   useEffect(() => {
     if (!scanOpen) return;
-
     const timer = setTimeout(() => {
       const el = document.getElementById(scanDivId);
       if (!el || scannerRef.current) return;
@@ -131,12 +173,8 @@ export default function MedicamentFormPage() {
       );
 
       scannerRef.current.render(
-        (decodedText) => {
-          setValue('code_barres', decodedText);
-          toast.success(`Code scanné : ${decodedText}`);
-          closeScanner();
-          checkDoublon(decodedText);
-        },
+        // ✅ Appel handleBarcodeDetected au lieu de juste setValue
+        (decodedText) => handleBarcodeDetected(decodedText),
         () => {},
       );
     }, 400);
@@ -175,9 +213,9 @@ export default function MedicamentFormPage() {
     try {
       const payload: MedicamentPayload = {
         ...data,
-        categorie: Number(data.categorie),
+        categorie:    Number(data.categorie),
         seuil_alerte: Number(data.seuil_alerte),
-        est_actif: true,
+        est_actif:    true,
       };
 
       if (isEdit) {
@@ -248,6 +286,14 @@ export default function MedicamentFormPage() {
         </Alert>
       )}
 
+      {/* ✅ Indicateur de recherche en cours */}
+      {fetchingInfo && (
+        <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}
+          icon={<CircularProgress size={18} />}>
+          Recherche des informations du médicament en cours...
+        </Alert>
+      )}
+
       <Box component="form" onSubmit={handleSubmit(onSubmit)}>
 
         {/* Section 1 — Informations générales */}
@@ -261,15 +307,18 @@ export default function MedicamentFormPage() {
             <Controller name="nom_commercial" control={control}
               rules={{ required: 'Nom commercial obligatoire' }}
               render={({ field }) => (
-                <TextField {...field} label="Nom Commercial *" placeholder="ex: Paracétamol 500mg"
-                  error={!!errors.nom_commercial} helperText={errors.nom_commercial?.message}
+                <TextField {...field} label="Nom Commercial *"
+                  placeholder="ex: Paracétamol 500mg"
+                  error={!!errors.nom_commercial}
+                  helperText={errors.nom_commercial?.message}
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
               )} />
 
             <Controller name="dci" control={control}
               rules={{ required: 'DCI obligatoire' }}
               render={({ field }) => (
-                <TextField {...field} label="DCI *" placeholder="ex: Paracétamol"
+                <TextField {...field} label="DCI *"
+                  placeholder="ex: Paracétamol"
                   error={!!errors.dci} helperText={errors.dci?.message}
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
               )} />
@@ -311,7 +360,8 @@ export default function MedicamentFormPage() {
             <Controller name="unite_stock" control={control}
               rules={{ required: 'Unité obligatoire' }}
               render={({ field }) => (
-                <TextField {...field} label="Unité de Conditionnement *" placeholder="ex: Boîte de 30"
+                <TextField {...field} label="Unité de Conditionnement *"
+                  placeholder="ex: Boîte de 30"
                   error={!!errors.unite_stock} helperText={errors.unite_stock?.message}
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
               )} />
@@ -328,7 +378,14 @@ export default function MedicamentFormPage() {
                   placeholder="ex: 3400936111005"
                   error={!!errors.code_barres}
                   helperText={errors.code_barres?.message}
-                  onChange={(e) => { field.onChange(e); checkDoublon(e.target.value); }}
+                  // ✅ Saisie manuelle : lookup + vérif doublon
+                  onChange={(e) => {
+                    field.onChange(e);
+                    const code = e.target.value;
+                    if (code.length >= 8) {
+                      handleBarcodeDetected(code);
+                    }
+                  }}
                   InputProps={{
                     endAdornment: (
                       <Tooltip title="Scanner avec la caméra">
@@ -361,7 +418,6 @@ export default function MedicamentFormPage() {
           subtitle="Paramétrez les seuils critiques pour éviter les ruptures."
         >
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2.5 }}>
-
             <Controller name="seuil_alerte" control={control}
               rules={{ required: 'Seuil obligatoire' }}
               render={({ field }) => (
@@ -377,7 +433,6 @@ export default function MedicamentFormPage() {
                   placeholder="ex: Conserver entre 15°C et 25°C"
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
               )} />
-
           </Box>
         </Section>
 
@@ -423,17 +478,14 @@ export default function MedicamentFormPage() {
         </Box>
       </Box>
 
-      {/* ── Scanner inline (évite conflit DOM avec MUI Dialog) ── */}
+      {/* Scanner inline */}
       {scanOpen && (
         <Box sx={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           bgcolor: 'rgba(0,0,0,0.75)', zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <Box sx={{
-            bgcolor: 'white', borderRadius: 3, p: 3,
-            width: 480, maxWidth: '90vw',
-          }}>
+          <Box sx={{ bgcolor: 'white', borderRadius: 3, p: 3, width: 480, maxWidth: '90vw' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <QrCodeScanner sx={{ color: '#2196F3' }} />
@@ -442,7 +494,7 @@ export default function MedicamentFormPage() {
               <IconButton onClick={closeScanner}><Close /></IconButton>
             </Box>
             <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-              Pointez la caméra vers le code-barres. La lecture est automatique.
+              Pointez la caméra vers le code-barres. Les informations seront remplies automatiquement.
             </Alert>
             <div id={scanDivId} style={{ width: '100%' }} />
             <Button onClick={closeScanner} sx={{ mt: 2, textTransform: 'none' }}>
