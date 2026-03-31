@@ -7,14 +7,13 @@ import LoginPage from './pages/LoginPage';
 import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './components/layout/MainLayout';
 import InventairePage from './pages/admin/InventairePage';
+import MedicamentFormPage from './pages/admin/MedicamentFormPage';
 
-const DashboardAdmin = () => {
-  return (
-    <div style={{ padding: 20 }}>
-      <h2 style={{ color: '#0D47A1' }}>Tableau de bord — En construction 🏗️</h2>
-    </div>
-  );
-};
+const DashboardAdmin = () => (
+  <div style={{ padding: 20 }}>
+    <h2 style={{ color: '#0D47A1' }}>Tableau de bord — En construction 🏗️</h2>
+  </div>
+);
 
 export default function App() {
   return (
@@ -25,7 +24,6 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Routes Admin avec layout */}
           <Route path="/dashboard/admin" element={
             <PrivateRoute><MainLayout /></PrivateRoute>
           }>
@@ -36,6 +34,8 @@ export default function App() {
             <PrivateRoute><MainLayout /></PrivateRoute>
           }>
             <Route path="inventaire" element={<InventairePage />} />
+            <Route path="inventaire/nouveau" element={<MedicamentFormPage />} />
+            <Route path="inventaire/:id/modifier" element={<MedicamentFormPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

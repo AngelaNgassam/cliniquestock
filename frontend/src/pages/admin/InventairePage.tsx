@@ -4,13 +4,11 @@ import {
   Box, Typography, Button, TextField, InputAdornment,
   Select, MenuItem, FormControl, Chip, IconButton,
   Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, Paper, Tooltip, Pagination, CircularProgress,
-  Card, Alert,
+  TableRow, Card, Alert, Tooltip, Pagination, CircularProgress,
 } from '@mui/material';
 import {
   Search, Add, Download, Visibility, Edit, Delete,
-  FilterList, Refresh, Inventory2, Warning, Error as ErrorIcon,
-  CheckCircle,
+  Refresh, Inventory2, Warning, Error as ErrorIcon, CheckCircle,
 } from '@mui/icons-material';
 import api from '../../services/authService';
 
@@ -29,29 +27,23 @@ interface Medicament {
   categorie_nom: string;
 }
 
-interface PaginatedResponse {
-  count: number;
-  results: Medicament[];
-}
-
-// KPI Card
-function KpiCard({ title, value, sub, color, icon }: any) {
+function KpiCard({ title, value, sub, color, icon }: {
+  title: string; value: number | string; sub: string;
+  color: string; icon: React.ReactNode;
+}) {
   return (
     <Card elevation={0} sx={{
-      p: 2.5, border: '1px solid #E3F2FD', borderRadius: 3,
-      flex: 1, minWidth: 180,
+      p: 2.5, border: '1px solid #E3F2FD', borderRadius: 3, flex: 1, minWidth: 160,
     }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>
           <Typography variant="body2" color="text.secondary" fontWeight={500}>{title}</Typography>
-          <Typography variant="h4" fontWeight={900} color={color || '#0D47A1'} sx={{ my: 0.5 }}>
-            {value}
-          </Typography>
+          <Typography variant="h4" fontWeight={900} color={color} sx={{ my: 0.5 }}>{value}</Typography>
           <Typography variant="caption" color="text.secondary">{sub}</Typography>
         </Box>
         <Box sx={{
           width: 48, height: 48, borderRadius: 2,
-          bgcolor: `${color || '#2196F3'}18`,
+          bgcolor: `${color}18`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           {icon}
@@ -82,10 +74,16 @@ export default function InventairePage() {
       if (filterStatut === 'inactif') params.append('est_actif', 'false');
       params.append('page', String(page));
 
-      const res = await api.get<PaginatedResponse>(`/medicaments/?${params}`);
-      setMedicaments(res.data.results);
-      setTotal(res.data.count);
-      setTotalPages(Math.ceil(res.data.count / 20));
+      const res = await api.get(`/medicaments/?${params}`);
+      const data = res.data;
+      const results: Medicament[] = Array.isArray(data.results)
+        ? data.results
+        : Array.isArray(data) ? data : [];
+      const count: number = data.count ?? results.length;
+
+      setMedicaments(results);
+      setTotal(count);
+      setTotalPages(Math.ceil(count / 20) || 1);
     } catch {
       setError('Erreur lors du chargement des médicaments.');
     } finally {
@@ -96,18 +94,17 @@ export default function InventairePage() {
   useEffect(() => { fetchMedicaments(); }, [search, filterStatut, page]);
 
   const handleArchiver = async (id: number, nom: string) => {
-    if (!confirm(`Archiver ${nom} ?`)) return;
-    await api.post(`/medicaments/${id}/archiver/`);
-    fetchMedicaments();
+    if (!confirm(`Archiver "${nom}" ?`)) return;
+    try {
+      await api.post(`/medicaments/${id}/archiver/`);
+      fetchMedicaments();
+    } catch {
+      alert('Erreur lors de l\'archivage.');
+    }
   };
 
-  const getStatutChip = (med: Medicament) => {
-    if (!med.est_actif) return <Chip label="Archivé" size="small" sx={{ bgcolor: '#ECEFF1', color: '#607D8B', fontWeight: 600 }} />;
-    return <Chip label="Actif" size="small" sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontWeight: 600 }} />;
-  };
-
-  const actifs = medicaments.filter(m => m.est_actif).length;
-  const inactifs = medicaments.filter(m => !m.est_actif).length;
+  const actifs = medicaments.filter((m) => m.est_actif).length;
+  const inactifs = medicaments.filter((m) => !m.est_actif).length;
 
   return (
     <Box>
@@ -124,7 +121,7 @@ export default function InventairePage() {
         <Box sx={{ display: 'flex', gap: 1.5 }}>
           <Button variant="outlined" startIcon={<Download />}
             sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>
-            Exporter (CSV)
+            Exportateur (CSV)
           </Button>
           <Button variant="contained" startIcon={<Add />}
             onClick={() => navigate('/admin/inventaire/nouveau')}
@@ -140,7 +137,7 @@ export default function InventairePage() {
 
       {/* KPIs */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <KpiCard title="Total Médicaments" value={total} sub="+12 depuis le mois dernier"
+        <KpiCard title="Médicaments totaux" value={total} sub="+12 depuis le mois dernier"
           color="#2196F3" icon={<Inventory2 sx={{ color: '#2196F3' }} />} />
         <KpiCard title="Médicaments Actifs" value={actifs} sub="En stock"
           color="#4CAF50" icon={<CheckCircle sx={{ color: '#4CAF50' }} />} />
@@ -160,7 +157,11 @@ export default function InventairePage() {
             size="small"
             sx={{ flex: 1, minWidth: 250 }}
             InputProps={{
-              startAdornment: <InputAdornment position="start"><Search sx={{ color: '#90A4AE' }} /></InputAdornment>,
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ color: '#90A4AE' }} />
+                </InputAdornment>
+              ),
             }}
           />
           <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -186,8 +187,10 @@ export default function InventairePage() {
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F8FBFF' }}>
-                {['Médicament', 'Catégorie', 'Dosage / Forme', 'Prix Unitaire', 'Seuil Alerte', 'Statut', 'Actions'].map((h) => (
-                  <TableCell key={h} sx={{ fontWeight: 700, color: '#546E7A', fontSize: 12, py: 1.5 }}>{h}</TableCell>
+                {['Médicament', 'Catégorie', 'Dosage / Forme', 'Prix Unitaire', 'Seuil Alerte', 'Statut', 'Actes'].map((h) => (
+                  <TableCell key={h} sx={{ fontWeight: 700, color: '#546E7A', fontSize: 12, py: 1.5 }}>
+                    {h}
+                  </TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -207,8 +210,12 @@ export default function InventairePage() {
               ) : medicaments.map((med) => (
                 <TableRow key={med.id} hover sx={{ '&:hover': { bgcolor: '#F8FBFF' } }}>
                   <TableCell>
-                    <Typography fontWeight={700} fontSize={14} color="#0D47A1">{med.nom_commercial}</Typography>
-                    <Typography variant="caption" color="text.secondary">{med.dci} • {med.code_barres}</Typography>
+                    <Typography fontWeight={700} fontSize={14} color="#0D47A1">
+                      {med.nom_commercial}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {med.dci} • {med.code_barres}
+                    </Typography>
                   </TableCell>
                   <TableCell>
                     <Chip label={med.categorie_nom || '—'} size="small"
@@ -219,14 +226,27 @@ export default function InventairePage() {
                     <Typography variant="caption" color="text.secondary">{med.forme_galenique}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography fontWeight={600} color="#1565C0">{Number(med.prix_unitaire).toLocaleString()} FCFA</Typography>
+                    <Typography fontWeight={600} color="#1565C0">
+                      {Number(med.prix_unitaire).toLocaleString()} FCFA
+                    </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography fontWeight={600} color={med.seuil_alerte > 50 ? '#F44336' : '#4CAF50'}>
+                    <Typography fontWeight={600}
+                      color={med.seuil_alerte > 50 ? '#F44336' : '#4CAF50'}>
                       {med.seuil_alerte} unités
                     </Typography>
                   </TableCell>
-                  <TableCell>{getStatutChip(med)}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={med.est_actif ? 'Actif' : 'Archivé'}
+                      size="small"
+                      sx={{
+                        bgcolor: med.est_actif ? '#E8F5E9' : '#ECEFF1',
+                        color: med.est_actif ? '#2E7D32' : '#607D8B',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
                       <Tooltip title="Voir détails">
@@ -255,14 +275,13 @@ export default function InventairePage() {
           </Table>
         </TableContainer>
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 3, py: 2, borderTop: '1px solid #E3F2FD' }}>
             <Typography variant="body2" color="text.secondary">
               Affichage de {((page - 1) * 20) + 1} à {Math.min(page * 20, total)} sur {total} médicaments
             </Typography>
-            <Pagination count={totalPages} page={page} onChange={(_, v) => setPage(v)}
-              color="primary" size="small" />
+            <Pagination count={totalPages} page={page}
+              onChange={(_, v) => setPage(v)} color="primary" size="small" />
           </Box>
         )}
       </Card>

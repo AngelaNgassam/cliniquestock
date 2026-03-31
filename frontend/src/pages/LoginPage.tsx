@@ -201,7 +201,7 @@ export default function LoginPage() {
                 '&:hover': { boxShadow: '0 6px 25px rgba(33,150,243,0.5)' },
               }}
             >
-              {loading ? <CircularProgress size={24} color="inherit" /> : 'Se connecter'}
+              {loading ? 'Connexion...' : 'Se connecter'}
             </Button>
           </Box>
 
