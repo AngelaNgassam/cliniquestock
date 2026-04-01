@@ -14,4 +14,5 @@ frontend/.env.local
 
 # Éditeurs
 .vscode/
-.idea/
+.idea/node_modules/
+frontend/node_modules/
