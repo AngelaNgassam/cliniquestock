@@ -6,4 +6,5 @@ urlpatterns = [
     path('api/v1/auth/',        include('cliniqueApp.users.urls')),
     path('api/v1/medicaments/', include('cliniqueApp.medicaments.urls')),
     path('api/v1/',             include('cliniqueApp.commandes.urls')),
+    path('api/v1/',             include('cliniqueApp.stock.urls')),
 ]
