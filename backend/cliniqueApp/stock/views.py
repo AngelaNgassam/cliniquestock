@@ -7,6 +7,8 @@ from cliniqueApp.users.permissions import EstAdmin, EstAdminOuPharmacien
 from .models import Reception, LotStock, MouvementStock
 from .serializers import ReceptionSerializer
 
+from django.db.models import Sum
+from .serializers import ReceptionSerializer, SortieStockSerializer
 
 class ReceptionViewSet(viewsets.ModelViewSet):
     serializer_class = ReceptionSerializer
@@ -128,5 +130,57 @@ class MouvementViewSet(viewsets.ViewSet):
             'patient_nom':     m.patient_nom,
             'prescripteur':    m.prescripteur,
         } for m in qs[:200]]  # limite à 200
+
+        return Response(data)
+    
+class SortieStockViewSet(viewsets.ViewSet):
+    permission_classes = [EstAdminOuPharmacien]
+
+    def create(self, request):
+        """
+        POST /api/v1/sorties/
+        Enregistre une dispensation et décrémente le stock.
+        """
+        serializer = SortieStockSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response(result, status=status.HTTP_201_CREATED)
+
+    def list(self, request):
+        """
+        GET /api/v1/sorties/
+        Historique des sorties (mouvements de type SORTIE).
+        """
+        qs = MouvementStock.objects.filter(
+            type_mouvement=MouvementStock.TypeMouvement.SORTIE
+        ).select_related('lot__medicament', 'operateur').order_by('-date_operation')
+
+        # Filtres
+        medicament_id = request.query_params.get('medicament_id')
+        date_debut    = request.query_params.get('date_debut')
+        date_fin      = request.query_params.get('date_fin')
+
+        if medicament_id:
+            qs = qs.filter(lot__medicament_id=medicament_id)
+        if date_debut:
+            qs = qs.filter(date_operation__date__gte=date_debut)
+        if date_fin:
+            qs = qs.filter(date_operation__date__lte=date_fin)
+
+        data = [{
+            'id':            m.id,
+            'medicament':    m.lot.medicament.nom_commercial,
+            'dci':           m.lot.medicament.dci,
+            'numero_lot':    m.lot.numero_lot,
+            'quantite':      m.quantite,
+            'date_operation': m.date_operation,
+            'operateur':     m.operateur.nom,
+            'num_ordonnance': m.numero_ordre,
+            'patient_nom':   m.patient_nom,
+            'prescripteur':  m.prescripteur,
+        } for m in qs[:200]]
 
         return Response(data)
