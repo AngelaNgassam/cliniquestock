@@ -40,4 +40,7 @@ export const medicamentService = {
 
   checkDoublon: (code: string) =>
     api.get(`/medicaments/?search=${code}`),
+
+  // Ajouter cette ligne dans l'objet medicamentService
+  getAll: (params?: string) => api.get(`/medicaments/${params ? '?' + params : ''}`),
 };
