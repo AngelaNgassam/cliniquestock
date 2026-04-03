@@ -64,18 +64,22 @@ export default function InventairePage() {
   const [totalPages, setTotalPages]   = useState(1);
   const [total, setTotal]             = useState(0);
 
+  // Remplace le bloc fetchMedicaments par :
   const fetchMedicaments = async () => {
     setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
+      //  N'envoyer est_actif que si filtre explicite
       if (filterStatut === 'actif')   params.append('est_actif', 'true');
       if (filterStatut === 'inactif') params.append('est_actif', 'false');
+      // filterStatut === 'tous' → pas de filtre est_actif → API retourne tout
       params.append('page', String(page));
 
       const res = await api.get(`/medicaments/?${params}`);
       const data = res.data;
+
       const results: Medicament[] = Array.isArray(data.results)
         ? data.results
         : Array.isArray(data) ? data : [];
@@ -84,7 +88,9 @@ export default function InventairePage() {
       setMedicaments(results);
       setTotal(count);
       setTotalPages(Math.ceil(count / 20) || 1);
-    } catch {
+    } catch (err: any) {
+      // ✅ Afficher l'erreur précise dans la console
+      console.error('Erreur inventaire:', err.response?.status, err.response?.data);
       setError('Erreur lors du chargement des médicaments.');
     } finally {
       setLoading(false);

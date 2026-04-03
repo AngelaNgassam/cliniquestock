@@ -1,7 +1,12 @@
 import { Navigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
 
-export default function PrivateRoute({ children }: { children: React.ReactElement }) {
-  const { isAuthenticated } = useAuthStore();
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+export default function PrivateRoute({ children }: { children: React.ReactNode }) {
+  // Vérifier localStorage directement (source de vérité)
+  const token = localStorage.getItem('access_token');
+
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
 }
