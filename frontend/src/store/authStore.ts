@@ -18,16 +18,25 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: localStorage.getItem('access_token'),
-  role: localStorage.getItem('role'),
+  user:            null,
+  token:           localStorage.getItem('access_token'),
+  role:            localStorage.getItem('role'),
   isAuthenticated: !!localStorage.getItem('access_token'),
 
-  setAuth: (user, token, role) =>
-    set({ user, token, role, isAuthenticated: true }),
+  setAuth: (user, token, role) => {
+    // ✅ Persister dans localStorage ET dans Zustand
+    localStorage.setItem('access_token', token);
+    localStorage.setItem('refresh_token', token);
+    localStorage.setItem('role', role);
+    localStorage.setItem('user', JSON.stringify(user));
+    set({ user, token, role, isAuthenticated: true });
+  },
 
   logout: () => {
-    localStorage.clear();
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('role');
+    localStorage.removeItem('user');
     set({ user: null, token: null, role: null, isAuthenticated: false });
   },
 }));

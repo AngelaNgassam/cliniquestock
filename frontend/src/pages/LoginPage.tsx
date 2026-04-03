@@ -31,12 +31,23 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
+      // 1. Login → reçoit access + refresh + role
       const res = await authService.login(data.email, data.password);
+
+      // 2. Récupérer le profil complet
       const me = await authService.getMe();
+
+      // 3. ✅ setAuth avec le bon ordre : (user, token, role)
       setAuth(me, res.access, res.role);
-      if (res.role === 'ADMINISTRATEUR') navigate('/dashboard/admin');
-      else navigate('/dashboard/pharmacien');
-    } catch {
+
+      // 4. Redirection selon le rôle
+      if (res.role === 'ADMINISTRATEUR') {
+        navigate('/admin/inventaire');  // ✅ aller directement à l'inventaire
+      } else {
+        navigate('/pharmacien/inventaire');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err.response?.data);
       setError('Email ou mot de passe incorrect. Veuillez réessayer.');
     } finally {
       setLoading(false);
