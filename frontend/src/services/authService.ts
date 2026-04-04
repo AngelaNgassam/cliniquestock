@@ -5,10 +5,14 @@ const API_URL = import.meta.env.VITE_API_URL;
 const api = axios.create({ baseURL: API_URL });
 
 // ✅ Intercepteur requête — lit toujours depuis localStorage (source de vérité)
+// APRÈS (correct) :
+const AUTH_ROUTES = ['/auth/login/', '/auth/register/', '/auth/refresh/'];
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const isAuthRoute = AUTH_ROUTES.some(route => config.url?.includes(route));
+  if (!isAuthRoute) {
+    const token = localStorage.getItem('access_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
