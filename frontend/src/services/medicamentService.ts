@@ -23,11 +23,11 @@ export interface MedicamentPayload {
 
 export const medicamentService = {
   getCategories: async (): Promise<Categorie[]> => {
-    const res = await api.get('/categories/');
-    if (Array.isArray(res.data)) return res.data;
-    if (Array.isArray(res.data.results)) return res.data.results;
-    return [];
-  },
+  const res = await api.get('/medicaments/categories/');  // ← ajouter medicaments/
+  if (Array.isArray(res.data)) return res.data;
+  if (Array.isArray(res.data.results)) return res.data.results;
+  return [];
+},
 
   create: (data: MedicamentPayload) =>
     api.post('/medicaments/', data),
