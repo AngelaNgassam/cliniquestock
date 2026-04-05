@@ -44,14 +44,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Nos applications
     'cliniqueApp.users',
     'cliniqueApp.medicaments',
     'cliniqueApp.commandes',
     'cliniqueApp.stock',
     'cliniqueApp.alertes',
     'cliniqueApp.rapports',
-    # Packages tiers
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
@@ -96,14 +94,12 @@ if not _db_password:
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME':     config('DB_NAME',     default='cliniquestock'),
-        'USER':     config('DB_USER',     default='postgres'),
+        'NAME':     config('DB_NAME',  default='cliniquestock'),
+        'USER':     config('DB_USER',  default='postgres'),
         'PASSWORD': _db_password,
-        'HOST':     config('DB_HOST',     default='127.0.0.1'),
-        'PORT':     config('DB_PORT',     default='5432'),
-        'OPTIONS': {
-            'client_encoding': 'UTF8',
-        },
+        'HOST':     config('DB_HOST',  default='127.0.0.1'),
+        'PORT':     config('DB_PORT',  default='5432'),
+        'OPTIONS':  {'client_encoding': 'UTF8'},
     }
 }
 
@@ -122,7 +118,6 @@ USE_TZ        = True
 STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ✅ REST_FRAMEWORK — une seule fois, sans doublon
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -143,8 +138,19 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
 ]
-
-# Autoriser aussi les credentials CORS (cookies, Authorization header)
 CORS_ALLOW_CREDENTIALS = True
 
 AUTH_USER_MODEL = 'users.Utilisateur'
+
+# ── Email Gmail ───────────────────────────────────────────────────────────────
+EMAIL_BACKEND       = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST          = 'smtp.gmail.com'
+EMAIL_PORT          = 587
+EMAIL_USE_TLS       = True
+EMAIL_HOST_USER     = config('EMAIL_HOST_USER',     default='ngassamangela2@gmail.com')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='isjtztuxhwsgmmdy')
+DEFAULT_FROM_EMAIL  = config('EMAIL_HOST_USER',     default='ngassamangela2@gmail.com')
+
+# ── SMS Africa's Talking ──────────────────────────────────────────────────────
+AT_USERNAME = config('AT_USERNAME', default='sandbox')
+AT_API_KEY  = config('AT_API_KEY',  default='atsk_47c0f3940fbfefdc5b6435d8fffa371068a6e2d464eeaaa4b96cae02ba971d3704df05b4')

@@ -31,7 +31,6 @@ export interface Commande {
 export interface CommandePayload {
   fournisseur: number;
   date_livraison_prevue?: string;
-  statut?: StatutCommande;
   lignes: {
     medicament: number;
     quantite_commandee: number;
