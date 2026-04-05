@@ -23,7 +23,9 @@ export interface MedicamentPayload {
 
 export const medicamentService = {
   getCategories: async (): Promise<Categorie[]> => {
-  const res = await api.get('/medicaments/categories/');  // ← ajouter medicaments/
+
+  // ✅ Après (URL correcte confirmée par les logs Django) :
+  const res = await api.get('/categories/');
   if (Array.isArray(res.data)) return res.data;
   if (Array.isArray(res.data.results)) return res.data.results;
   return [];
