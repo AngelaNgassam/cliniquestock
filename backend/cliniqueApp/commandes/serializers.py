@@ -74,7 +74,8 @@ class CommandeSerializer(serializers.ModelSerializer):
             'statut', 'montant_total', 'fournisseur', 'fournisseur_nom',
             'cree_par', 'cree_par_nom', 'lignes', 'modifiable',
         ]
-        read_only_fields = ['id', 'date_creation', 'montant_total', 'cree_par']
+        read_only_fields = ['id', 'reference', 'date_creation', 'montant_total', 'cree_par']
+#                        ^^^^^^^^^^^
 
     def get_modifiable(self, obj):
         """True si la commande a moins de 24h."""
