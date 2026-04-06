@@ -72,7 +72,7 @@ class CommandeViewSet(viewsets.ModelViewSet):
             )
         if commande.statut not in [Commande.Statut.BROUILLON, Commande.Statut.EN_ATTENTE]:
             return Response(
-                {'error': 'Seules les commandes en brouillon peuvent être supprimées.'},
+                {'error': 'Seules les commandes en brouillon ou en attente peuvent être supprimées.'},
                 status=status.HTTP_403_FORBIDDEN
             )
         commande.delete()
@@ -87,25 +87,56 @@ class CommandeViewSet(viewsets.ModelViewSet):
                 {'error': 'Commande déjà envoyée ou clôturée.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         commande.statut = Commande.Statut.EN_ATTENTE
         commande.save()
-
         self._envoyer_email_fournisseur(commande)
         self._envoyer_sms_fournisseur(commande)
-
         return Response({
             'message': f'Commande {commande.reference} envoyée. Fournisseur notifié.',
             'statut':  commande.statut,
         })
 
-    # ── Email ─────────────────────────────────────────────────────────────────
+    # ── PATCH /commandes/{id}/annuler/ ────────────────────────────────────────
+    @action(detail=True, methods=['patch'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        commande = self.get_object()
+        if commande.statut in [Commande.Statut.LIVREE, Commande.Statut.ANNULEE]:
+            return Response(
+                {'error': "Impossible d'annuler une commande livrée ou déjà annulée."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        commande.statut = Commande.Statut.ANNULEE
+        commande.save()
+        self._envoyer_email_annulation(commande)  # ← email annulation
+        return Response({
+            'message': f'Commande {commande.reference} annulée.',
+            'statut':  commande.statut,
+        })
+
+    # ── PATCH /commandes/{id}/cloture/ ────────────────────────────────────────
+    @action(detail=True, methods=['patch'], url_path='cloture')
+    def cloture(self, request, pk=None):
+        commande = self.get_object()
+        if commande.statut not in [Commande.Statut.LIVREE, Commande.Statut.PARTIELLE]:
+            return Response(
+                {'error': 'Seules les commandes reçues peuvent être clôturées.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        commande.statut = Commande.Statut.LIVREE
+        commande.save()
+        return Response({
+            'message': f'Commande {commande.reference} clôturée.',
+            'statut':  commande.statut,
+        })
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Méthodes email / SMS privées  (toutes dans la classe)
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _envoyer_email_fournisseur(self, commande):
-        """Envoie un email récapitulatif au fournisseur."""
+        """Envoie un email récapitulatif au fournisseur lors de l'envoi d'une commande."""
         try:
             fournisseur = commande.fournisseur
-
-            # Construire le récapitulatif des lignes
             lignes_text = ""
             for ligne in commande.lignes.all():
                 total_ligne = ligne.quantite_commandee * ligne.prix_unitaire_estime
@@ -116,14 +147,11 @@ class CommandeViewSet(viewsets.ModelViewSet):
                     f"Prix unitaire: {ligne.prix_unitaire_estime} FCFA | "
                     f"Total: {total_ligne} FCFA\n"
                 )
-
             date_livraison = (
                 commande.date_livraison_prevue.strftime('%d/%m/%Y')
                 if commande.date_livraison_prevue else 'Non precisee'
             )
-
             sujet = f"[CliniqueStock] Nouvelle commande {commande.reference}"
-
             message = f"""Bonjour {fournisseur.nom_societe},
 
 Une nouvelle commande vous a ete adressee via CliniqueStock.
@@ -141,7 +169,6 @@ Merci de confirmer la reception de cette commande.
 
 Cordialement,
 L'equipe CliniqueStock"""
-
             send_mail(
                 subject=sujet,
                 message=message,
@@ -150,28 +177,50 @@ L'equipe CliniqueStock"""
                 fail_silently=False,
             )
             print(f"[EMAIL] Envoye a {fournisseur.email}")
-
         except Exception as e:
             print(f"[EMAIL ERROR] {e}")
 
-    # ── SMS Africa's Talking ──────────────────────────────────────────────────
+    def _envoyer_email_annulation(self, commande):
+        """Envoie un email d'annulation au fournisseur."""
+        try:
+            fournisseur = commande.fournisseur
+            sujet = f"[CliniqueStock] Annulation commande {commande.reference}"
+            message = f"""Bonjour {fournisseur.nom_societe},
+
+Nous vous informons que la commande {commande.reference} passee le {commande.date_creation.strftime('%d/%m/%Y')} a ete annulee.
+
+Si vous avez deja effectue des preparatifs, veuillez nous contacter directement.
+
+Cordialement,
+L'equipe CliniqueStock"""
+            send_mail(
+                subject=sujet,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[fournisseur.email],
+                fail_silently=False,
+            )
+            print(f"[EMAIL ANNULATION] Envoye a {fournisseur.email}")
+        except Exception as e:
+            print(f"[EMAIL ANNULATION ERROR] {e}")
+
     def _envoyer_sms_fournisseur(self, commande):
-        """Envoie un SMS via Africa's Talking."""
+        """Envoie un SMS via Africa's Talking (sandbox)."""
         try:
             import africastalking
             import re
 
             fournisseur = commande.fournisseur
+            print(f"[SMS DEBUG] Contact brut: '{fournisseur.contact}'")
 
-            # Extraire le numéro depuis le champ contact
             phone_match = re.search(r'\+?\d[\d\s\-]{8,}', fournisseur.contact)
             if not phone_match:
                 print(f"[SMS] Pas de numero pour {fournisseur.nom_societe}")
                 return
 
             phone = re.sub(r'[\s\-]', '', phone_match.group())
+            print(f"[SMS DEBUG] Phone extrait: '{phone}'")
 
-            # Formater en numéro camerounais international
             if re.match(r'^6\d{8}$', phone):
                 phone = '+237' + phone
             elif re.match(r'^237\d{9}$', phone):
@@ -184,7 +233,6 @@ L'equipe CliniqueStock"""
                 commande.date_livraison_prevue.strftime('%d/%m/%Y')
                 if commande.date_livraison_prevue else 'non precisee'
             )
-
             sms_body = (
                 f"[CliniqueStock] Commande {commande.reference}\n"
                 f"{nb_articles} article(s) - {commande.montant_total} FCFA\n"
@@ -204,35 +252,3 @@ L'equipe CliniqueStock"""
             print("[SMS] africastalking non installe.")
         except Exception as e:
             print(f"[SMS ERROR] {e}")
-
-    # ── PATCH /commandes/{id}/annuler/ ────────────────────────────────────────
-    @action(detail=True, methods=['patch'], url_path='annuler')
-    def annuler(self, request, pk=None):
-        commande = self.get_object()
-        if commande.statut in [Commande.Statut.LIVREE, Commande.Statut.ANNULEE]:
-            return Response(
-                {'error': "Impossible d'annuler une commande livree ou deja annulee."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        commande.statut = Commande.Statut.ANNULEE
-        commande.save()
-        return Response({
-            'message': f'Commande {commande.reference} annulee.',
-            'statut':  commande.statut,
-        })
-
-    # ── PATCH /commandes/{id}/cloture/ ────────────────────────────────────────
-    @action(detail=True, methods=['patch'], url_path='cloture')
-    def cloture(self, request, pk=None):
-        commande = self.get_object()
-        if commande.statut not in [Commande.Statut.LIVREE, Commande.Statut.PARTIELLE]:
-            return Response(
-                {'error': 'Seules les commandes recues peuvent etre cloturees.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        commande.statut = Commande.Statut.LIVREE
-        commande.save()
-        return Response({
-            'message': f'Commande {commande.reference} cloturee.',
-            'statut':  commande.statut,
-        })
