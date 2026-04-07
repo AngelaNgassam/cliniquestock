@@ -107,7 +107,7 @@ class CommandeViewSet(viewsets.ModelViewSet):
             )
         commande.statut = Commande.Statut.ANNULEE
         commande.save()
-        self._envoyer_email_annulation(commande)  # ← email annulation
+        self._envoyer_email_annulation(commande)
         return Response({
             'message': f'Commande {commande.reference} annulée.',
             'statut':  commande.statut,
@@ -124,17 +124,33 @@ class CommandeViewSet(viewsets.ModelViewSet):
             )
         commande.statut = Commande.Statut.LIVREE
         commande.save()
+        self._envoyer_email_cloture(commande)
         return Response({
             'message': f'Commande {commande.reference} clôturée.',
             'statut':  commande.statut,
         })
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Méthodes email / SMS privées  (toutes dans la classe)
+    # Méthodes email / SMS (toutes dans la classe)
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _construire_recap_lignes(self, commande):
+        """Construit le texte récapitulatif des lignes de commande."""
+        lignes_text = ""
+        for ligne in commande.lignes.all():
+            total_ligne = ligne.quantite_commandee * ligne.prix_unitaire_estime
+            lignes_text += (
+                f"  - {ligne.medicament.nom_commercial} "
+                f"({ligne.medicament.dci}) | "
+                f"Qte commandee: {ligne.quantite_commandee} | "
+                f"Qte recue: {ligne.quantite_recue} | "
+                f"Prix unitaire: {ligne.prix_unitaire_estime} FCFA | "
+                f"Total: {total_ligne} FCFA\n"
+            )
+        return lignes_text
+
     def _envoyer_email_fournisseur(self, commande):
-        """Envoie un email récapitulatif au fournisseur lors de l'envoi d'une commande."""
+        """Email de nouvelle commande envoyee au fournisseur."""
         try:
             fournisseur = commande.fournisseur
             lignes_text = ""
@@ -176,12 +192,12 @@ L'equipe CliniqueStock"""
                 recipient_list=[fournisseur.email],
                 fail_silently=False,
             )
-            print(f"[EMAIL] Envoye a {fournisseur.email}")
+            print(f"[EMAIL COMMANDE] Envoye a {fournisseur.email}")
         except Exception as e:
-            print(f"[EMAIL ERROR] {e}")
+            print(f"[EMAIL COMMANDE ERROR] {e}")
 
     def _envoyer_email_annulation(self, commande):
-        """Envoie un email d'annulation au fournisseur."""
+        """Email d'annulation au fournisseur."""
         try:
             fournisseur = commande.fournisseur
             sujet = f"[CliniqueStock] Annulation commande {commande.reference}"
@@ -189,7 +205,7 @@ L'equipe CliniqueStock"""
 
 Nous vous informons que la commande {commande.reference} passee le {commande.date_creation.strftime('%d/%m/%Y')} a ete annulee.
 
-Si vous avez deja effectue des preparatifs, veuillez nous contacter directement.
+Si vous avez deja effectue des preparatifs pour cette commande, veuillez nous contacter directement afin de convenir d'une solution.
 
 Cordialement,
 L'equipe CliniqueStock"""
@@ -203,6 +219,133 @@ L'equipe CliniqueStock"""
             print(f"[EMAIL ANNULATION] Envoye a {fournisseur.email}")
         except Exception as e:
             print(f"[EMAIL ANNULATION ERROR] {e}")
+
+    def _envoyer_email_cloture(self, commande):
+        """Email de cloture au fournisseur."""
+        try:
+            fournisseur = commande.fournisseur
+            lignes_text = self._construire_recap_lignes(commande)
+            sujet = f"[CliniqueStock] Clôture commande {commande.reference}"
+            message = f"""Bonjour {fournisseur.nom_societe},
+
+Nous vous informons que la commande {commande.reference} a ete cloturee avec succes dans notre systeme.
+
+RECAP FINAL DE LA COMMANDE
+Reference       : {commande.reference}
+Date de commande: {commande.date_creation.strftime('%d/%m/%Y')}
+
+MEDICAMENTS :
+{lignes_text}
+MONTANT TOTAL : {commande.montant_total} FCFA
+
+Merci pour votre collaboration.
+
+Cordialement,
+L'equipe CliniqueStock"""
+            send_mail(
+                subject=sujet,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[fournisseur.email],
+                fail_silently=False,
+            )
+            print(f"[EMAIL CLOTURE] Envoye a {fournisseur.email}")
+        except Exception as e:
+            print(f"[EMAIL CLOTURE ERROR] {e}")
+
+    def _envoyer_email_reception(self, commande, reception, lignes_data):
+        """
+        Email de compte rendu de réception au fournisseur.
+        Appelé depuis stock/views.py après création d'une réception.
+        lignes_data = liste de dicts avec medicament_nom, quantite_commandee,
+                      quantite_recue, has_anomalie, type_anomalie, description_anomalie
+        """
+        try:
+            fournisseur = commande.fournisseur
+            date_livraison = (
+                commande.date_livraison_prevue.strftime('%d/%m/%Y')
+                if commande.date_livraison_prevue else 'Non precisee'
+            )
+
+            # Construire le détail des lignes reçues
+            lignes_ok   = ""
+            lignes_pb   = ""
+            a_anomalies = False
+
+            for l in lignes_data:
+                if l.get('has_anomalie'):
+                    a_anomalies = True
+                    label_anomalie = {
+                        'PRODUIT_NON_CONFORME':    'Produit non conforme',
+                        'MEDICAMENT_ENDOMMAGE':    'Medicament endommage',
+                        'PEREMPTION_INSUFFISANTE': 'Peremption insuffisante (< 6 mois)',
+                        'QUANTITE_MANQUANTE':      'Quantite manquante',
+                    }.get(l.get('type_anomalie', ''), l.get('type_anomalie', ''))
+                    lignes_pb += (
+                        f"  ⚠ {l['medicament_nom']} | "
+                        f"Qte commandee: {l['quantite_commandee']} | "
+                        f"Qte recue: {l['quantite_recue']} | "
+                        f"Anomalie: {label_anomalie}"
+                    )
+                    if l.get('description_anomalie'):
+                        lignes_pb += f" — {l['description_anomalie']}"
+                    lignes_pb += "\n"
+                else:
+                    lignes_ok += (
+                        f"  ✓ {l['medicament_nom']} | "
+                        f"Qte recue: {l['quantite_recue']} / {l['quantite_commandee']} commandes\n"
+                    )
+
+            statut_label = {
+                'LIVREE':    'COMPLETEMENT LIVREE',
+                'PARTIELLE': 'PARTIELLEMENT LIVREE',
+            }.get(commande.statut, commande.statut)
+
+            if a_anomalies:
+                sujet = f"[CliniqueStock] ⚠ Réception partielle — {commande.reference}"
+            else:
+                sujet = f"[CliniqueStock] ✓ Réception enregistrée — {commande.reference}"
+
+            message = f"""Bonjour {fournisseur.nom_societe},
+
+Nous avons enregistre la reception de votre livraison pour la commande {commande.reference}.
+
+STATUT DE LA COMMANDE : {statut_label}
+Reference       : {commande.reference}
+Date livraison  : {date_livraison}
+"""
+            if lignes_ok:
+                message += f"""
+MEDICAMENTS RECUS CORRECTEMENT :
+{lignes_ok}"""
+
+            if lignes_pb:
+                message += f"""
+MEDICAMENTS AVEC ANOMALIES :
+{lignes_pb}
+Actions effectuees selon le type d'anomalie :
+  - Produit non conforme  → Bon de retour genere, produit non integre au stock
+  - Medicament endommage  → Produit place en stock quarantaine
+  - Peremption < 6 mois  → Alerte declenchee, confirmation requise
+  - Quantite manquante   → Commande passee en statut "Partielle"
+
+Merci de prendre note de ces anomalies et de nous contacter si necessaire.
+"""
+
+            message += f"""
+Cordialement,
+L'equipe CliniqueStock"""
+
+            send_mail(
+                subject=sujet,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[fournisseur.email],
+                fail_silently=False,
+            )
+            print(f"[EMAIL RECEPTION] Envoye a {fournisseur.email}")
+        except Exception as e:
+            print(f"[EMAIL RECEPTION ERROR] {e}")
 
     def _envoyer_sms_fournisseur(self, commande):
         """Envoie un SMS via Africa's Talking (sandbox)."""
