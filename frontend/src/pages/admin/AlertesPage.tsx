@@ -1,22 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Card, Chip, IconButton, Tooltip,
   CircularProgress, Alert, Tabs, Tab, Divider,
   Accordion, AccordionSummary, AccordionDetails,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, FormControl, InputLabel, Select, MenuItem,
+  Grid, Snackbar,
 } from '@mui/material';
 import {
-  CheckCircle, NotificationsOff, Refresh,
-  ExpandMore, Settings, ErrorOutline,
-  WarningAmber, Schedule, Inventory,
+  CheckCircle, NotificationsOff, Refresh, ExpandMore,
+  Settings, ErrorOutline, WarningAmber, Schedule,
+  ShoppingCart, DeleteSweep, Inventory, Close,
+  VerifiedUser,
 } from '@mui/icons-material';
 import toast, { Toaster } from 'react-hot-toast';
 import alerteService from '../../services/alerteService';
-import type { Alerte, NiveauAlerte, TypeAlerte } from '../../services/alerteService';
+import type { Alerte, NiveauAlerte, TypeAlerte, SeuilConfig } from '../../services/alerteService';
 
-// ── Config visuelle ──────────────────────────────────────────────────────────
-const NIVEAU_CONFIG: Record<NiveauAlerte, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
+// ── Config visuelle ───────────────────────────────────────────────────────────
+const NIVEAU_CONFIG: Record<NiveauAlerte, {
+  label: string; color: string; bg: string; border: string; icon: React.ReactNode
+}> = {
   CRITIQUE: { label: 'Critique',      color: '#C62828', bg: '#FFEBEE', border: '#EF9A9A', icon: <ErrorOutline sx={{ color: '#C62828', fontSize: 20 }} /> },
-  ELEVE:    { label: 'Élevé',         color: '#E65100', bg: '#FFF3E0', border: '#FFCC02', icon: <WarningAmber sx={{ color: '#E65100', fontSize: 20 }} /> },
+  ELEVE:    { label: 'Élevé',         color: '#E65100', bg: '#FFF3E0', border: '#FFCC80', icon: <WarningAmber sx={{ color: '#E65100', fontSize: 20 }} /> },
   MOYEN:    { label: 'Avertissement', color: '#F57F17', bg: '#FFFDE7', border: '#FFF176', icon: <WarningAmber sx={{ color: '#F57F17', fontSize: 20 }} /> },
   BAS:      { label: 'Logistique',    color: '#1565C0', bg: '#E3F2FD', border: '#90CAF9', icon: <Schedule    sx={{ color: '#1565C0', fontSize: 20 }} /> },
 };
@@ -30,23 +37,233 @@ const TYPE_LABEL: Record<TypeAlerte, string> = {
 
 function tempsEcoule(dateStr: string): string {
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
-  if (diff < 60)   return 'À l\'instant';
-  if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`;
+  if (diff < 60)    return 'À l\'instant';
+  if (diff < 3600)  return `Il y a ${Math.floor(diff / 60)} min`;
   if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)} h`;
   return `Il y a ${Math.floor(diff / 86400)} jour(s)`;
 }
 
-// ── Carte alerte ──────────────────────────────────────────────────────────────
-function AlerteCard({ alerte, onResolved }: { alerte: Alerte; onResolved: () => void }) {
+// ── Modal Vérification ────────────────────────────────────────────────────────
+function VerifierModal({ alerte, open, onClose }: {
+  alerte: Alerte | null; open: boolean; onClose: () => void;
+}) {
+  const [info, setInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !alerte) return;
+    setLoading(true);
+    alerteService.verifier(alerte.id)
+      .then(r => { setInfo(r.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [open, alerte]);
+
+  if (!alerte) return null;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <VerifiedUser sx={{ color: '#1565C0' }} />
+          <Typography fontWeight={700} color="#0D47A1">Vérification de l'alerte</Typography>
+        </Box>
+        <IconButton onClick={onClose}><Close /></IconButton>
+      </DialogTitle>
+      <Divider />
+      <DialogContent sx={{ pt: 3 }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : info ? (
+          <Box>
+            <Alert severity={info.est_lue ? 'success' : 'warning'} sx={{ mb: 2 }}>
+              {info.est_lue ? '✅ Cette alerte a été résolue.' : '⚠️ Cette alerte est encore active.'}
+            </Alert>
+            <Box sx={{ display: 'grid', gap: 1.5 }}>
+              {[
+                ['Type',          TYPE_LABEL[info.type_alerte as TypeAlerte]],
+                ['Niveau',        info.niveau],
+                ['Créée le',      new Date(info.date_creation).toLocaleString('fr-FR')],
+                ['Statut',        info.est_lue ? 'Résolue' : 'En cours'],
+                ['Résolution',    info.resolution],
+              ].map(([label, value]) => (
+                <Box key={label} sx={{ display: 'flex', gap: 2 }}>
+                  <Typography fontWeight={600} fontSize={13} color="#546E7A" sx={{ minWidth: 100 }}>
+                    {label}
+                  </Typography>
+                  <Typography fontSize={13} color="#333">{value}</Typography>
+                </Box>
+              ))}
+            </Box>
+            <Box sx={{ mt: 2, p: 2, bgcolor: '#F5F5F5', borderRadius: 2 }}>
+              <Typography fontWeight={600} fontSize={13} color="#0D47A1" sx={{ mb: 1 }}>
+                Détail du message
+              </Typography>
+              <Typography fontSize={13} color="#444">{info.message}</Typography>
+            </Box>
+          </Box>
+        ) : null}
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose} sx={{ borderRadius: 2, textTransform: 'none' }}>Fermer</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ── Modal Configuration des seuils ────────────────────────────────────────────
+function SeuilConfigModal({ open, onClose, onSaved }: {
+  open: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const [loading,  setLoading]  = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [seuils,   setSeuils]   = useState<SeuilConfig>({
+    seuil_stock_global:        10,
+    seuil_critique:            5,
+    seuil_peremption_warning:  7,
+    seuil_peremption_critique: 3,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    alerteService.getSeuils()
+      .then(r => { setSeuils(r.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [open]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await alerteService.saveSeuils(seuils);
+      toast.success('Seuils sauvegardés avec succès !');
+      onSaved();
+      onClose();
+    } catch {
+      toast.error('Erreur lors de la sauvegarde.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const Field = ({ label, field, color, description }: {
+    label: string; field: keyof SeuilConfig; color: string; description: string;
+  }) => (
+    <Box sx={{ p: 2, border: `1px solid ${color}30`, borderLeft: `4px solid ${color}`, borderRadius: 2, bgcolor: `${color}08` }}>
+      <Typography fontWeight={700} fontSize={13} color={color} sx={{ mb: 0.5 }}>{label}</Typography>
+      <Typography fontSize={12} color="text.secondary" sx={{ mb: 1.5 }}>{description}</Typography>
+      <TextField
+        type="number" size="small" fullWidth
+        value={seuils[field]}
+        onChange={e => setSeuils(prev => ({ ...prev, [field]: Number(e.target.value) }))}
+        inputProps={{ min: 0 }}
+        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+      />
+    </Box>
+  );
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Settings sx={{ color: '#1565C0' }} />
+          <Typography fontWeight={700} color="#0D47A1">Configurer les seuils d'alerte</Typography>
+        </Box>
+        <IconButton onClick={onClose}><Close /></IconButton>
+      </DialogTitle>
+      <Divider />
+      <DialogContent sx={{ pt: 3 }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Ces seuils définissent quand les alertes sont déclenchées automatiquement.
+            </Typography>
+
+            {/* Stock */}
+            <Typography fontWeight={700} color="#546E7A" fontSize={12} sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+              Seuils de stock
+            </Typography>
+            <Field
+              label="Seuil de stock global (unités)"
+              field="seuil_stock_global"
+              color="#F57F17"
+              description="Déclenche une alerte Avertissement quand le stock descend sous ce seuil."
+            />
+            <Field
+              label="Seuil critique de stock (unités)"
+              field="seuil_critique"
+              color="#C62828"
+              description="Déclenche une alerte Critique. Le médicament est en rupture imminente."
+            />
+
+            <Divider />
+
+            {/* Péremption */}
+            <Typography fontWeight={700} color="#546E7A" fontSize={12} sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+              Seuils de péremption
+            </Typography>
+            <Field
+              label="Péremption — Avertissement (jours)"
+              field="seuil_peremption_warning"
+              color="#F57F17"
+              description="Alerte Avertissement si un lot expire dans moins de X jours."
+            />
+            <Field
+              label="Péremption — Critique (jours)"
+              field="seuil_peremption_critique"
+              color="#C62828"
+              description="Alerte Critique si un lot expire dans moins de X jours."
+            />
+          </Box>
+        )}
+      </DialogContent>
+      <Divider />
+      <DialogActions sx={{ p: 2.5, gap: 1 }}>
+        <Button onClick={onClose} variant="outlined"
+          sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>
+          Annuler
+        </Button>
+        <Button onClick={handleSave} variant="contained" disabled={saving}
+          startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <CheckCircle />}
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
+          {saving ? 'Sauvegarde...' : 'Enregistrer'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ── Carte alerte ──────────────────────────────────────────────────────────────
+function AlerteCard({ alerte, onRefresh }: { alerte: Alerte; onRefresh: () => void }) {
+  const navigate = useNavigate();
+  const [loading,       setLoading]       = useState(false);
+  const [verifierOpen,  setVerifierOpen]  = useState(false);
   const nc = NIVEAU_CONFIG[alerte.niveau_urgence];
 
   const handleResolve = async () => {
+    if (alerte.type_alerte === 'STOCK_BAS') {
+      // Rediriger vers page commandes avec médicament pré-sélectionné
+      navigate('/admin/commandes', {
+        state: { medicamentId: alerte.medicament_id, medicamentNom: alerte.medicament_nom }
+      });
+      return;
+    }
+    if (alerte.type_alerte === 'PEREMPTION') {
+      // Rediriger vers formulaire de mouvement (stock)
+      navigate('/admin/inventaire', { state: { action: 'mouvement', medicamentId: alerte.medicament_id } });
+      return;
+    }
+    // Résolution manuelle pour les autres types
     setLoading(true);
     try {
       await alerteService.resolve(alerte.id);
       toast.success('Alerte résolue.');
-      onResolved();
+      onRefresh();
     } catch {
       toast.error('Erreur lors de la résolution.');
     } finally {
@@ -54,86 +271,112 @@ function AlerteCard({ alerte, onResolved }: { alerte: Alerte; onResolved: () => 
     }
   };
 
+  const handleCommander = () => {
+    navigate('/admin/commandes', {
+      state: { medicamentId: alerte.medicament_id, medicamentNom: alerte.medicament_nom, openDialog: true }
+    });
+  };
+
   return (
-    <Card elevation={0} sx={{
-      border: `1px solid ${nc.border}`,
-      borderLeft: `4px solid ${nc.color}`,
-      borderRadius: 2, mb: 1.5, bgcolor: nc.bg,
-      opacity: alerte.est_lue ? 0.6 : 1,
-      transition: 'opacity 0.3s',
-    }}>
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-        {/* Icône */}
-        <Box sx={{
-          width: 36, height: 36, borderRadius: '50%',
-          bgcolor: `${nc.color}20`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}>
-          {nc.icon}
-        </Box>
-
-        {/* Contenu */}
-        <Box sx={{ flex: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
-            <Typography fontWeight={700} fontSize={14} color={nc.color}>
-              {alerte.message.split(':')[0]}
-            </Typography>
-            <Chip label={nc.label} size="small"
-              sx={{ bgcolor: nc.color, color: 'white', fontWeight: 700, fontSize: 11, height: 20 }} />
-            {alerte.est_lue && (
-              <Chip label="TRAITÉ" size="small"
-                sx={{ bgcolor: '#E0E0E0', color: '#757575', fontWeight: 700, fontSize: 11, height: 20 }} />
-            )}
+    <>
+      <Card elevation={0} sx={{
+        border: `1px solid ${nc.border}`,
+        borderLeft: `4px solid ${nc.color}`,
+        borderRadius: 2, mb: 1.5, bgcolor: alerte.est_lue ? '#FAFAFA' : nc.bg,
+        opacity: alerte.est_lue ? 0.75 : 1,
+        transition: 'all 0.3s',
+      }}>
+        <Box sx={{ p: 2, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+          {/* Icône */}
+          <Box sx={{
+            width: 36, height: 36, borderRadius: '50%',
+            bgcolor: alerte.est_lue ? '#E0E0E0' : `${nc.color}20`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            {nc.icon}
           </Box>
 
-          <Typography fontSize={13} color="#555" sx={{ mb: 1, lineHeight: 1.6 }}>
-            {alerte.message}
-          </Typography>
+          {/* Contenu */}
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
+              <Typography fontWeight={700} fontSize={14} color={alerte.est_lue ? '#757575' : nc.color}>
+                {alerte.message.split('—')[0].split(':')[0].trim()}
+              </Typography>
+              <Chip label={nc.label} size="small"
+                sx={{ bgcolor: nc.color, color: 'white', fontWeight: 700, fontSize: 11, height: 20 }} />
+              {alerte.est_lue && (
+                <Chip label="TRAITÉ" size="small"
+                  sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontWeight: 700, fontSize: 11, height: 20 }} />
+              )}
+            </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Schedule sx={{ fontSize: 13 }} />
-              {tempsEcoule(alerte.date_creation)}
+            <Typography fontSize={12} color={alerte.est_lue ? '#9E9E9E' : '#555'} sx={{ mb: 1, lineHeight: 1.6 }}>
+              {alerte.message}
             </Typography>
-            <Chip label={TYPE_LABEL[alerte.type_alerte]} size="small"
-              sx={{ bgcolor: '#F5F5F5', color: '#546E7A', fontSize: 11, height: 18 }} />
-          </Box>
-        </Box>
 
-        {/* Actions */}
-        {!alerte.est_lue && (
-          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Schedule sx={{ fontSize: 12 }} />
+                {tempsEcoule(alerte.date_creation)}
+              </Typography>
+              <Chip label={TYPE_LABEL[alerte.type_alerte]} size="small"
+                sx={{ bgcolor: '#F5F5F5', color: '#546E7A', fontSize: 11, height: 18 }} />
+            </Box>
+          </Box>
+
+          {/* Actions */}
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {/* Bouton Commander — toujours visible pour STOCK_BAS */}
             {alerte.type_alerte === 'STOCK_BAS' && (
-              <Button size="small" variant="outlined" startIcon={<Inventory sx={{ fontSize: 14 }} />}
-                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5, borderColor: nc.color, color: nc.color }}>
+              <Button size="small" variant="outlined"
+                startIcon={<ShoppingCart sx={{ fontSize: 14 }} />}
+                onClick={handleCommander}
+                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5,
+                  borderColor: '#1565C0', color: '#1565C0' }}>
                 Commander
               </Button>
             )}
-            {alerte.type_alerte === 'PEREMPTION' && (
+
+            {/* Bouton Vérifier — toujours visible */}
+            <Button size="small" variant="outlined"
+              startIcon={<VerifiedUser sx={{ fontSize: 14 }} />}
+              onClick={() => setVerifierOpen(true)}
+              sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5,
+                borderColor: '#9C27B0', color: '#6A1B9A' }}>
+              Vérifier
+            </Button>
+
+            {/* Bouton Résoudre — seulement si non résolue */}
+            {!alerte.est_lue && (
               <Button size="small" variant="outlined"
-                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5, borderColor: nc.color, color: nc.color }}>
-                Vérifier
+                startIcon={loading ? <CircularProgress size={12} /> : <CheckCircle sx={{ fontSize: 14 }} />}
+                onClick={handleResolve} disabled={loading}
+                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5,
+                  borderColor: '#4CAF50', color: '#2E7D32' }}>
+                Résoudre
               </Button>
             )}
-            <Button size="small" variant="outlined" startIcon={<CheckCircle sx={{ fontSize: 14 }} />}
-              onClick={handleResolve} disabled={loading}
-              sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5, borderColor: '#4CAF50', color: '#2E7D32' }}>
-              {loading ? <CircularProgress size={12} /> : 'Résoudre'}
-            </Button>
           </Box>
-        )}
-      </Box>
-    </Card>
+        </Box>
+      </Card>
+
+      <VerifierModal
+        alerte={alerte}
+        open={verifierOpen}
+        onClose={() => setVerifierOpen(false)}
+      />
+    </>
   );
 }
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function AlertesPage() {
-  const [alertes,  setAlertes]  = useState<Alerte[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState('');
-  const [tabValue, setTabValue] = useState(0);
+  const [alertes,       setAlertes]       = useState<Alerte[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState('');
+  const [tabValue,      setTabValue]      = useState(0);
+  const [seuilOpen,     setSeuilOpen]     = useState(false);
+  const [nettoyLoading, setNettoyLoading] = useState(false);
 
   const fetchAlertes = useCallback(async () => {
     setLoading(true);
@@ -151,34 +394,39 @@ export default function AlertesPage() {
 
   useEffect(() => {
     fetchAlertes();
-    // Polling toutes les 30 secondes
     const interval = setInterval(fetchAlertes, 30000);
     return () => clearInterval(interval);
   }, [fetchAlertes]);
 
   const handleMarkAllRead = async () => {
     try {
-      await alerteService.markAllRead();
-      toast.success('Toutes les alertes ont été marquées comme lues.');
+      const res = await alerteService.markAllRead();
+      toast.success((res.data as any).message);
       fetchAlertes();
-    } catch {
-      toast.error('Erreur.');
-    }
+    } catch { toast.error('Erreur.'); }
   };
 
-  // Filtres par onglet
+  const handleNettoyer = async () => {
+    if (!confirm('Supprimer définitivement toutes les alertes traitées de plus de 30 jours ?')) return;
+    setNettoyLoading(true);
+    try {
+      const res = await alerteService.nettoyer();
+      toast.success((res.data as any).message);
+      fetchAlertes();
+    } catch { toast.error('Erreur.'); } finally { setNettoyLoading(false); }
+  };
+
   const tabs = [
-    { label: 'Toutes',        filter: (a: Alerte) => true },
-    { label: 'Critiques',     filter: (a: Alerte) => a.niveau_urgence === 'CRITIQUE' && !a.est_lue },
-    { label: 'Avertissements',filter: (a: Alerte) => ['MOYEN', 'ELEVE'].includes(a.niveau_urgence) && !a.est_lue },
-    { label: 'Traitées',      filter: (a: Alerte) => a.est_lue },
+    { label: 'Toutes',         filter: (_: Alerte) => true },
+    { label: 'Critiques',      filter: (a: Alerte) => a.niveau_urgence === 'CRITIQUE' && !a.est_lue },
+    { label: 'Avertissements', filter: (a: Alerte) => ['MOYEN', 'ELEVE'].includes(a.niveau_urgence) && !a.est_lue },
+    { label: 'Traitées',       filter: (a: Alerte) => a.est_lue },
   ];
 
   const alertesFiltrees = alertes.filter(tabs[tabValue].filter);
-
-  const critiques     = alertes.filter(a => a.niveau_urgence === 'CRITIQUE' && !a.est_lue).length;
+  const critiques      = alertes.filter(a => a.niveau_urgence === 'CRITIQUE' && !a.est_lue).length;
   const avertissements = alertes.filter(a => ['MOYEN', 'ELEVE'].includes(a.niveau_urgence) && !a.est_lue).length;
-  const logistiques   = alertes.filter(a => a.niveau_urgence === 'BAS' && !a.est_lue).length;
+  const logistiques    = alertes.filter(a => a.niveau_urgence === 'BAS' && !a.est_lue).length;
 
   return (
     <Box>
@@ -187,25 +435,35 @@ export default function AlertesPage() {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" fontWeight={800} color="#0D47A1">
-            Alertes & Notifications
-          </Typography>
+          <Typography variant="h4" fontWeight={800} color="#0D47A1">Alertes & Notifications</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Surveillez l'état critique de votre inventaire et réagissez aux urgences.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
-          <Button variant="outlined" startIcon={<NotificationsOff />}
+        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+          <Button variant="outlined" size="small"
+            startIcon={<NotificationsOff sx={{ fontSize: 16 }} />}
             onClick={handleMarkAllRead}
-            sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>
+            sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0', fontSize: 13 }}>
             Tout marquer comme lu
           </Button>
-          <Button variant="contained" startIcon={<Settings />}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
+          <Button variant="outlined" size="small" color="error"
+            startIcon={nettoyLoading ? <CircularProgress size={14} color="inherit" /> : <DeleteSweep sx={{ fontSize: 16 }} />}
+            onClick={handleNettoyer} disabled={nettoyLoading}
+            sx={{ borderRadius: 2, textTransform: 'none', fontSize: 13 }}>
+            Nettoyer les alertes
+          </Button>
+          <Button variant="contained" size="small"
+            startIcon={<Settings sx={{ fontSize: 16 }} />}
+            onClick={() => setSeuilOpen(true)}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, fontSize: 13,
+              background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
             Configurer les seuils
           </Button>
           <Tooltip title="Actualiser">
-            <IconButton onClick={fetchAlertes} sx={{ color: '#2196F3' }}><Refresh /></IconButton>
+            <IconButton onClick={fetchAlertes} size="small" sx={{ color: '#2196F3' }}>
+              <Refresh />
+            </IconButton>
           </Tooltip>
         </Box>
       </Box>
@@ -224,7 +482,7 @@ export default function AlertesPage() {
             borderRadius: 2, bgcolor: bg,
           }}>
             <Typography variant="h3" fontWeight={900} color={color}>{value}</Typography>
-            <Typography variant="caption" fontWeight={700} color={color} sx={{ letterSpacing: 1 }}>
+            <Typography variant="caption" fontWeight={700} color={color} sx={{ letterSpacing: 0.8 }}>
               {label}
             </Typography>
           </Card>
@@ -234,15 +492,13 @@ export default function AlertesPage() {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {/* Onglets */}
-      <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 2 }}>
+      <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 2, borderBottom: '1px solid #E3F2FD' }}>
         {tabs.map((t, i) => <Tab key={i} label={t.label} sx={{ textTransform: 'none', fontWeight: 600 }} />)}
       </Tabs>
 
-      {/* Liste des alertes */}
+      {/* Liste */}
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
       ) : alertesFiltrees.length === 0 ? (
         <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 2, p: 6, textAlign: 'center' }}>
           <CheckCircle sx={{ fontSize: 48, color: '#4CAF50', mb: 2 }} />
@@ -251,11 +507,11 @@ export default function AlertesPage() {
         </Card>
       ) : (
         alertesFiltrees.map(alerte => (
-          <AlerteCard key={alerte.id} alerte={alerte} onResolved={fetchAlertes} />
+          <AlerteCard key={alerte.id} alerte={alerte} onRefresh={fetchAlertes} />
         ))
       )}
 
-      {/* Informations sur les seuils */}
+      {/* Informations seuils */}
       <Box sx={{ mt: 4 }}>
         <Divider sx={{ mb: 2 }} />
         <Typography fontWeight={700} color="#0D47A1" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -268,7 +524,7 @@ export default function AlertesPage() {
           },
           {
             q: 'Personnaliser mes préférences de notification',
-            r: 'Vous pouvez configurer les seuils de chaque médicament depuis la page Inventaire → Fiche médicament → Seuil d\'alerte critique.',
+            r: 'Utilisez le bouton "Configurer les seuils" pour définir des seuils globaux. Les seuils individuels par médicament se configurent dans la fiche du médicament → Seuil d\'alerte critique.',
           },
         ].map(({ q, r }) => (
           <Accordion key={q} elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: '8px !important', mb: 1 }}>
@@ -281,6 +537,13 @@ export default function AlertesPage() {
           </Accordion>
         ))}
       </Box>
+
+      {/* Modal Configuration seuils */}
+      <SeuilConfigModal
+        open={seuilOpen}
+        onClose={() => setSeuilOpen(false)}
+        onSaved={fetchAlertes}
+      />
     </Box>
   );
 }

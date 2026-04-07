@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Drawer, AppBar, Toolbar, Typography, IconButton,
@@ -9,9 +9,12 @@ import {
   Dashboard, Inventory2, LocalShipping, ShoppingCart,
   NotificationsNone, Assessment, People, Settings,
   Search, Menu as MenuIcon, Logout, AdminPanelSettings,
+  Notifications
 } from '@mui/icons-material';
+
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/authService';
+import alerteService from '../../services/alerteService';
 
 const DRAWER_WIDTH = 220;
 
@@ -25,6 +28,33 @@ const navItems = [
   { label: 'Utilisateurs',    icon: <People />, path: '/admin/utilisateurs' },
   { label: 'Paramètres',      icon: <Settings />, path: '/admin/parametres' },
 ];
+
+
+// 🔔 Composant Notification dynamique
+function NotificationBadge() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await alerteService.getNonLues();
+        setCount((res.data as any).count ?? 0);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <Badge badgeContent={count} color="error" max={99}>
+      <Notifications />
+    </Badge>
+  );
+}
 
 export default function MainLayout() {
   const navigate = useNavigate();
@@ -40,6 +70,7 @@ export default function MainLayout() {
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#0D47A1' }}>
+      
       {/* Logo */}
       <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box sx={{
@@ -61,6 +92,7 @@ export default function MainLayout() {
         {navItems.map((item) => {
           const isActive = location.pathname === item.path ||
             (item.path !== '/dashboard/admin' && location.pathname.startsWith(item.path));
+
           return (
             <ListItemButton
               key={item.path}
@@ -72,14 +104,19 @@ export default function MainLayout() {
               }}
             >
               <ListItemIcon sx={{ color: 'rgba(255,255,255,0.8)', minWidth: 36 }}>
+                
+                {/* 🔥 Badge dynamique pour Alertes */}
                 {item.label === 'Alertes'
-                  ? <Badge badgeContent={3} color="error">{item.icon}</Badge>
+                  ? <NotificationBadge />
                   : item.icon}
+
               </ListItemIcon>
+
               <ListItemText
                 primary={item.label}
                 primaryTypographyProps={{
-                  fontSize: 13.5, fontWeight: isActive ? 700 : 400,
+                  fontSize: 13.5,
+                  fontWeight: isActive ? 700 : 400,
                   color: 'white',
                 }}
               />
@@ -95,13 +132,24 @@ export default function MainLayout() {
         <Avatar sx={{ width: 36, height: 36, bgcolor: '#2196F3', fontSize: 14 }}>
           {user?.prenom?.[0]}{user?.nom?.[0]}
         </Avatar>
+
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="body2" color="white" fontWeight={600} noWrap fontSize={12}>
             {user?.prenom} {user?.nom}
           </Typography>
-          <Chip label="Admin" size="small"
-            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontSize: 10, height: 18 }} />
+
+          <Chip
+            label="Admin"
+            size="small"
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.2)',
+              color: 'white',
+              fontSize: 10,
+              height: 18
+            }}
+          />
         </Box>
+
         <Tooltip title="Se déconnecter">
           <IconButton onClick={handleLogout} size="small" sx={{ color: 'rgba(255,255,255,0.7)' }}>
             <Logout fontSize="small" />
@@ -113,9 +161,11 @@ export default function MainLayout() {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#F0F4FF' }}>
+      
       {/* Sidebar desktop */}
       <Drawer variant="permanent" sx={{
-        width: DRAWER_WIDTH, flexShrink: 0,
+        width: DRAWER_WIDTH,
+        flexShrink: 0,
         display: { xs: 'none', md: 'block' },
         '& .MuiDrawer-paper': { width: DRAWER_WIDTH, border: 'none', boxSizing: 'border-box' },
       }}>
@@ -134,12 +184,15 @@ export default function MainLayout() {
 
       {/* Contenu principal */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+
         {/* Top bar */}
         <AppBar position="sticky" elevation={0} sx={{
-          bgcolor: 'white', borderBottom: '1px solid #E3F2FD',
+          bgcolor: 'white',
+          borderBottom: '1px solid #E3F2FD',
           zIndex: 1,
         }}>
           <Toolbar sx={{ gap: 2 }}>
+            
             <IconButton sx={{ display: { md: 'none' } }} onClick={() => setMobileOpen(true)}>
               <MenuIcon />
             </IconButton>
@@ -159,11 +212,9 @@ export default function MainLayout() {
 
             <Box sx={{ flex: 1 }} />
 
-            {/* Notifications */}
-            <IconButton>
-              <Badge badgeContent={3} color="error">
-                <NotificationsNone sx={{ color: '#546E7A' }} />
-              </Badge>
+            {/* 🔔 Notifications dynamiques */}
+            <IconButton onClick={() => navigate('/admin/alertes')}>
+              <NotificationBadge />
             </IconButton>
 
             {/* Avatar user */}
@@ -171,6 +222,7 @@ export default function MainLayout() {
               <Avatar sx={{ width: 36, height: 36, bgcolor: '#2196F3', fontSize: 14 }}>
                 {user?.prenom?.[0]}{user?.nom?.[0]}
               </Avatar>
+
               <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
                 <Typography variant="body2" fontWeight={600} color="#0D47A1" lineHeight={1.2}>
                   {user?.prenom} {user?.nom}
@@ -178,6 +230,7 @@ export default function MainLayout() {
                 <Typography variant="caption" color="text.secondary">Admin</Typography>
               </Box>
             </Box>
+
           </Toolbar>
         </AppBar>
 
