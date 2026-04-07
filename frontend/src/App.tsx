@@ -11,6 +11,7 @@ import MedicamentFormPage from './pages/admin/MedicamentFormPage';
 import FournisseursPage from './pages/admin/FournisseursPage';
 import MedicamentDetailPage from './pages/admin/MedicamentDetailPage';
 import CommandesPage from './pages/admin/CommandesPage';
+import AlertesPage from './pages/admin/AlertesPage';
 
 const DashboardAdmin = () => (
   <div style={{ padding: 20 }}>
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="inventaire/:id/modifier" element={<MedicamentFormPage />} />
             <Route path="fournisseurs" element={<FournisseursPage />} />
             <Route path="commandes" element={<CommandesPage />} />
+            <Route path="alertes" element={<AlertesPage />} />
           </Route>
 
           <Route path="/pharmacien" element={
