@@ -1,5 +1,8 @@
 # backend/cliniqueApp/commandes/views.py
 
+import re
+import requests
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -91,6 +94,7 @@ class CommandeViewSet(viewsets.ModelViewSet):
         commande.save()
         self._envoyer_email_fournisseur(commande)
         self._envoyer_sms_fournisseur(commande)
+        self._envoyer_whatsapp_fournisseur(commande)
         return Response({
             'message': f'Commande {commande.reference} envoyée. Fournisseur notifié.',
             'statut':  commande.statut,
@@ -130,9 +134,118 @@ class CommandeViewSet(viewsets.ModelViewSet):
             'statut':  commande.statut,
         })
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Méthodes email / SMS (toutes dans la classe)
-    # ─────────────────────────────────────────────────────────────────────────
+    # =========================================================================
+    # Utilitaires Infobip
+    # =========================================================================
+
+    def _infobip_headers(self):
+        return {
+            'Authorization': f'App {settings.INFOBIP_API_KEY}',
+            'Content-Type':  'application/json',
+            'Accept':        'application/json',
+        }
+
+    def _normaliser_telephone(self, contact_brut):
+        """Extrait et normalise un numéro camerounais vers le format E.164."""
+        match = re.search(r'\+?\d[\d\s\-]{8,}', contact_brut)
+        if not match:
+            return None
+        phone = re.sub(r'[\s\-]', '', match.group())
+        if re.match(r'^6\d{8}$', phone):
+            phone = '+237' + phone
+        elif re.match(r'^237\d{9}$', phone):
+            phone = '+' + phone
+        elif not phone.startswith('+'):
+            phone = '+237' + phone
+        return phone
+
+    def _envoyer_sms_fournisseur(self, commande):
+        """Envoie un SMS de nouvelle commande via Infobip."""
+        fournisseur = commande.fournisseur
+        phone = self._normaliser_telephone(fournisseur.contact)
+        if not phone:
+            print(f"[SMS] Pas de numéro valide pour {fournisseur.nom_societe}")
+            return
+
+        nb_articles    = commande.lignes.count()
+        date_livraison = (
+            commande.date_livraison_prevue.strftime('%d/%m/%Y')
+            if commande.date_livraison_prevue else 'non precisee'
+        )
+        sms_body = (
+            f"[CliniqueStock] Commande {commande.reference}\n"
+            f"{nb_articles} article(s) - {commande.montant_total} FCFA\n"
+            f"Livraison: {date_livraison}\n"
+            f"Details par email."
+        )
+
+        url     = f"https://{settings.INFOBIP_BASE_URL}/sms/2/text/advanced"
+        payload = {
+            "messages": [{
+                "from":         settings.INFOBIP_SENDER_SMS,
+                "destinations": [{"to": phone}],
+                "text":         sms_body,
+            }]
+        }
+
+        try:
+            response = requests.post(
+                url, json=payload, headers=self._infobip_headers(), timeout=10
+            )
+            response.raise_for_status()
+            print(f"[SMS Infobip] Envoyé à {phone} : {response.json()}")
+        except Exception as e:
+            print(f"[SMS Infobip ERROR] {e}")
+
+    def _envoyer_whatsapp_fournisseur(self, commande):
+        """Envoie un message WhatsApp via Infobip (template pré-approuvé)."""
+        fournisseur = commande.fournisseur
+        phone = self._normaliser_telephone(fournisseur.contact)
+        if not phone:
+            print(f"[WA] Pas de numéro valide pour {fournisseur.nom_societe}")
+            return
+
+        nb_articles    = commande.lignes.count()
+        date_livraison = (
+            commande.date_livraison_prevue.strftime('%d/%m/%Y')
+            if commande.date_livraison_prevue else 'non precisee'
+        )
+
+        url     = f"https://{settings.INFOBIP_BASE_URL}/whatsapp/1/message/template"
+        payload = {
+            "messages": [{
+                "from": settings.INFOBIP_SENDER_WHATSAPP,
+                "to":   phone,
+                "content": {
+                    "templateName": settings.INFOBIP_WA_TEMPLATE_NAME,
+                    "templateData": {
+                        "body": {
+                            # Ordre des placeholders à adapter à ton template Infobip
+                            "placeholders": [
+                                commande.reference,
+                                str(nb_articles),
+                                str(commande.montant_total),
+                                date_livraison,
+                            ]
+                        }
+                    },
+                    "language": settings.INFOBIP_WA_TEMPLATE_LANG,
+                }
+            }]
+        }
+
+        try:
+            response = requests.post(
+                url, json=payload, headers=self._infobip_headers(), timeout=10
+            )
+            response.raise_for_status()
+            print(f"[WA Infobip] Envoyé à {phone} : {response.json()}")
+        except Exception as e:
+            print(f"[WA Infobip ERROR] {e}")
+
+    # =========================================================================
+    # Méthodes email
+    # =========================================================================
 
     def _construire_recap_lignes(self, commande):
         """Construit le texte récapitulatif des lignes de commande."""
@@ -267,7 +380,6 @@ L'equipe CliniqueStock"""
                 if commande.date_livraison_prevue else 'Non precisee'
             )
 
-            # Construire le détail des lignes reçues
             lignes_ok   = ""
             lignes_pb   = ""
             a_anomalies = False
@@ -332,7 +444,7 @@ Actions effectuees selon le type d'anomalie :
 Merci de prendre note de ces anomalies et de nous contacter si necessaire.
 """
 
-            message += f"""
+            message += """
 Cordialement,
 L'equipe CliniqueStock"""
 
@@ -346,52 +458,3 @@ L'equipe CliniqueStock"""
             print(f"[EMAIL RECEPTION] Envoye a {fournisseur.email}")
         except Exception as e:
             print(f"[EMAIL RECEPTION ERROR] {e}")
-
-    def _envoyer_sms_fournisseur(self, commande):
-        """Envoie un SMS via Africa's Talking (sandbox)."""
-        try:
-            import africastalking
-            import re
-
-            fournisseur = commande.fournisseur
-            print(f"[SMS DEBUG] Contact brut: '{fournisseur.contact}'")
-
-            phone_match = re.search(r'\+?\d[\d\s\-]{8,}', fournisseur.contact)
-            if not phone_match:
-                print(f"[SMS] Pas de numero pour {fournisseur.nom_societe}")
-                return
-
-            phone = re.sub(r'[\s\-]', '', phone_match.group())
-            print(f"[SMS DEBUG] Phone extrait: '{phone}'")
-
-            if re.match(r'^6\d{8}$', phone):
-                phone = '+237' + phone
-            elif re.match(r'^237\d{9}$', phone):
-                phone = '+' + phone
-            elif not phone.startswith('+'):
-                phone = '+237' + phone
-
-            nb_articles    = commande.lignes.count()
-            date_livraison = (
-                commande.date_livraison_prevue.strftime('%d/%m/%Y')
-                if commande.date_livraison_prevue else 'non precisee'
-            )
-            sms_body = (
-                f"[CliniqueStock] Commande {commande.reference}\n"
-                f"{nb_articles} article(s) - {commande.montant_total} FCFA\n"
-                f"Livraison: {date_livraison}\n"
-                f"Details par email."
-            )
-
-            africastalking.initialize(
-                username=settings.AT_USERNAME,
-                api_key=settings.AT_API_KEY,
-            )
-            sms = africastalking.SMS
-            response = sms.send(sms_body, [phone])
-            print(f"[SMS] Envoye a {phone} : {response}")
-
-        except ImportError:
-            print("[SMS] africastalking non installe.")
-        except Exception as e:
-            print(f"[SMS ERROR] {e}")

@@ -77,3 +77,23 @@ class MedicamentViewSet(viewsets.ModelViewSet):
                 data['stock_actuel'] = stock_total
                 critiques.append(data)
         return Response(critiques)
+    
+    
+    @action(detail=True, methods=['patch'], url_path='update-seuil')
+    def update_seuil(self, request, pk=None):
+        """PATCH /medicaments/{id}/update-seuil/ — met à jour le seuil d'alerte"""
+        from cliniqueApp.users.permissions import EstAdmin
+        if not request.user.role == 'ADMINISTRATEUR':
+            return Response({'error': 'Admin uniquement.'}, status=403)
+
+        medicament = self.get_object()
+        nouveau_seuil = request.data.get('seuil_alerte')
+        if nouveau_seuil is None:
+            return Response({'error': 'seuil_alerte requis.'}, status=400)
+
+        medicament.seuil_alerte = int(nouveau_seuil)
+        medicament.save()
+        return Response({
+            'message':      f'Seuil mis à jour pour {medicament.nom_commercial}.',
+            'seuil_alerte': medicament.seuil_alerte,
+        })

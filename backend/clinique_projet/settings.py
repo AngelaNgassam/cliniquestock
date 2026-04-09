@@ -151,6 +151,10 @@ EMAIL_HOST_USER     = config('EMAIL_HOST_USER',     default='ngassamangela2@gmai
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='isjtztuxhwsgmmdy')
 DEFAULT_FROM_EMAIL  = config('EMAIL_HOST_USER',     default='ngassamangela2@gmail.com')
 
-# ── SMS Africa's Talking ──────────────────────────────────────────────────────
-AT_USERNAME = config('AT_USERNAME', default='sandbox')
-AT_API_KEY  = config('AT_API_KEY',  default='atsk_47c0f3940fbfefdc5b6435d8fffa371068a6e2d464eeaaa4b96cae02ba971d3704df05b4')
+# ── SMS / WhatsApp Infobip ────────────────────────────────────────────────────
+INFOBIP_BASE_URL  = config('INFOBIP_BASE_URL',  default='3dd1kw.api.infobip.com')
+INFOBIP_API_KEY   = config('INFOBIP_API_KEY',   default='207dd5d45c39080d383b5455436e7377-b1830e88-e762-41df-9b6a-28b7d4547924')
+INFOBIP_SENDER_SMS        = config('INFOBIP_SENDER_SMS',        default='CliniqueStock')
+INFOBIP_SENDER_WHATSAPP   = config('INFOBIP_SENDER_WHATSAPP',   default='676849422')   # ton numéro WA enregistré
+INFOBIP_WA_TEMPLATE_NAME  = config('INFOBIP_WA_TEMPLATE_NAME',  default='test_whatsapp_template_name')
+INFOBIP_WA_TEMPLATE_LANG  = config('INFOBIP_WA_TEMPLATE_LANG',  default='fr')
