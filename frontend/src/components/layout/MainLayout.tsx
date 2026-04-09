@@ -18,17 +18,17 @@ import alerteService from '../../services/alerteService';
 
 const DRAWER_WIDTH = 220;
 
-const navItems = [
-  { label: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard/admin' },
-  { label: 'Inventaire',      icon: <Inventory2 />, path: '/admin/inventaire' },
-  { label: 'Fournisseurs',    icon: <LocalShipping />, path: '/admin/fournisseurs' },
-  { label: 'Commandes',       icon: <ShoppingCart />, path: '/admin/commandes' },
-  { label: 'Alertes',         icon: <NotificationsNone />, path: '/admin/alertes' },
-  { label: 'Rapports',        icon: <Assessment />, path: '/admin/rapports' },
-  { label: 'Utilisateurs',    icon: <People />, path: '/admin/utilisateurs' },
-  { label: 'Paramètres',      icon: <Settings />, path: '/admin/parametres' },
-];
 
+const navItems = [
+  { label: 'Tableau de bord', icon: <Dashboard />,         path: '/admin' },
+  { label: 'Inventaire',      icon: <Inventory2 />,        path: '/admin/inventaire' },
+  { label: 'Fournisseurs',    icon: <LocalShipping />,     path: '/admin/fournisseurs' },
+  { label: 'Commandes',       icon: <ShoppingCart />,      path: '/admin/commandes' },
+  { label: 'Alertes',         icon: <NotificationsNone />, path: '/admin/alertes' },
+  { label: 'Rapports',        icon: <Assessment />,        path: '/admin/rapports' },  // ← corrigé
+  { label: 'Utilisateurs',    icon: <People />,            path: '/admin/utilisateurs' },
+  { label: 'Paramètres',      icon: <Settings />,          path: '/admin/parametres' },
+];
 
 // 🔔 Composant Notification dynamique
 function NotificationBadge() {
@@ -90,8 +90,9 @@ export default function MainLayout() {
       {/* Navigation */}
       <List sx={{ flex: 1, px: 1.5, py: 2 }}>
         {navItems.map((item) => {
-          const isActive = location.pathname === item.path ||
-            (item.path !== '/dashboard/admin' && location.pathname.startsWith(item.path));
+          const isActive = item.path === '/admin'
+            ? location.pathname === '/admin'
+            : location.pathname.startsWith(item.path);
 
           return (
             <ListItemButton

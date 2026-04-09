@@ -237,3 +237,143 @@ class SortieStockViewSet(viewsets.ViewSet):
         } for m in qs[:200]]
 
         return Response(data)
+    
+    
+class DashboardViewSet(viewsets.ViewSet):
+    permission_classes = [EstAdminOuPharmacien]
+
+    def list(self, request):
+        """GET /api/v1/dashboard/ — KPIs + données graphiques"""
+        from cliniqueApp.medicaments.models import Medicament
+        from cliniqueApp.commandes.models import Commande
+        from cliniqueApp.alertes.models import Alerte
+        from django.db.models import Sum, Count, F
+        from django.utils import timezone
+        from datetime import timedelta
+
+        today = timezone.now().date()
+        user  = request.user
+
+        # ── KPI 1 : Total médicaments actifs ──────────────────────────────────
+        total_medicaments = Medicament.objects.filter(est_actif=True).count()
+
+        # ── KPI 2 : Ruptures de stock (stock <= seuil) ────────────────────────
+        meds_actifs = Medicament.objects.filter(est_actif=True)
+        ruptures = 0
+        stock_faible = 0
+        for med in meds_actifs:
+            stock = LotStock.objects.filter(
+                medicament=med, statut='DISPONIBLE'
+            ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
+            if stock == 0:
+                ruptures += 1
+            elif stock <= med.seuil_alerte:
+                stock_faible += 1
+
+        # ── KPI 3 : Lots expirant dans < 30 jours ─────────────────────────────
+        lots_expirant_30j = LotStock.objects.filter(
+            statut='DISPONIBLE',
+            date_peremption__lte=today + timedelta(days=30),
+            date_peremption__gte=today,
+        ).count()
+
+        # ── KPI 4 : Commandes en cours ────────────────────────────────────────
+        commandes_en_cours = Commande.objects.filter(
+            statut__in=['EN_ATTENTE', 'PARTIELLE']
+        ).count()
+
+        # ── KPI 5 : Valeur totale du stock ────────────────────────────────────
+        valeur_stock = LotStock.objects.filter(
+            statut='DISPONIBLE'
+        ).aggregate(
+            val=Sum(F('quantite_disponible') * F('prix_achat'))
+        )['val'] or 0
+
+        # ── KPI 6 : Alertes non lues ─────────────────────────────────────────
+        alertes_actives = Alerte.objects.filter(
+            destinataire=user, est_lue=False
+        ).count()
+
+        # ── Graphique : Mouvements 6 derniers mois ────────────────────────────
+        mouvements_data = []
+        for i in range(5, -1, -1):
+            mois_debut = today.replace(day=1) - timedelta(days=i * 28)
+            mois_fin   = (mois_debut.replace(month=mois_debut.month % 12 + 1, day=1)
+                          if mois_debut.month < 12
+                          else mois_debut.replace(year=mois_debut.year + 1, month=1, day=1))
+
+            entrees = MouvementStock.objects.filter(
+                type_mouvement='ENTREE',
+                date_operation__date__gte=mois_debut,
+                date_operation__date__lt=mois_fin,
+            ).aggregate(total=Sum('quantite'))['total'] or 0
+
+            sorties = MouvementStock.objects.filter(
+                type_mouvement='SORTIE',
+                date_operation__date__gte=mois_debut,
+                date_operation__date__lt=mois_fin,
+            ).aggregate(total=Sum('quantite'))['total'] or 0
+
+            import locale
+            mois_noms = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
+                         'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
+            mouvements_data.append({
+                'mois':    mois_noms[mois_debut.month - 1],
+                'entrees': entrees,
+                'sorties': sorties,
+            })
+
+        # ── Graphique : Valeur par catégorie ──────────────────────────────────
+        from cliniqueApp.medicaments.models import Categorie
+        valeur_par_categorie = []
+        for cat in Categorie.objects.all():
+            meds_cat = Medicament.objects.filter(categorie=cat, est_actif=True)
+            valeur = 0
+            for med in meds_cat:
+                lots = LotStock.objects.filter(medicament=med, statut='DISPONIBLE')
+                valeur += lots.aggregate(
+                    val=Sum(F('quantite_disponible') * F('prix_achat'))
+                )['val'] or 0
+            if valeur > 0:
+                valeur_par_categorie.append({
+                    'categorie': cat.nom,
+                    'valeur':    float(valeur),
+                })
+
+        # ── Graphique : Analyse des alertes ───────────────────────────────────
+        from cliniqueApp.alertes.models import Alerte as AlerteModel
+        analyse_alertes = [
+            {'type': 'Rupture',         'count': ruptures},
+            {'type': 'Seuil Critique',  'count': stock_faible},
+            {'type': 'Péremption < 30', 'count': lots_expirant_30j},
+            {'type': 'Péremption < 90', 'count': LotStock.objects.filter(
+                statut='DISPONIBLE',
+                date_peremption__lte=today + timedelta(days=90),
+                date_peremption__gte=today,
+            ).count()},
+        ]
+
+        # ── Alertes récentes (5 dernières) ────────────────────────────────────
+        alertes_recentes = list(
+            Alerte.objects.filter(destinataire=user, est_lue=False)
+            .order_by('-date_creation')[:5]
+            .values('id', 'type_alerte', 'niveau_urgence', 'message', 'date_creation')
+        )
+
+        return Response({
+            'kpis': {
+                'total_medicaments': total_medicaments,
+                'ruptures_stock':    ruptures,
+                'stock_faible':      stock_faible,
+                'lots_expirant_30j': lots_expirant_30j,
+                'commandes_en_cours': commandes_en_cours,
+                'valeur_stock':      float(valeur_stock),
+                'alertes_actives':   alertes_actives,
+            },
+            'graphiques': {
+                'mouvements_6_mois':   mouvements_data,
+                'valeur_par_categorie': valeur_par_categorie,
+                'analyse_alertes':     analyse_alertes,
+            },
+            'alertes_recentes': alertes_recentes,
+        })
