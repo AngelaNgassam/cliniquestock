@@ -1,10 +1,12 @@
+from time import timezone
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Sum, F
 
 from cliniqueApp.users.permissions import EstAdmin, EstAdminOuPharmacien
-from .models import Reception, LotStock, MouvementStock
+from .models import Inventaire, Inventaire, Reception, LotStock, MouvementStock
 from .serializers import ReceptionSerializer, SortieStockSerializer
 
 
@@ -376,4 +378,201 @@ class DashboardViewSet(viewsets.ViewSet):
                 'analyse_alertes':     analyse_alertes,
             },
             'alertes_recentes': alertes_recentes,
+        })
+        
+        
+class InventaireViewSet(viewsets.ViewSet):
+    permission_classes = [EstAdminOuPharmacien]
+
+    # ── POST /inventaires/ — initier ──────────────────────────────────────────
+    def create(self, request):
+        from cliniqueApp.users.permissions import EstAdmin
+        if request.user.role != 'ADMINISTRATEUR':
+            return Response({'error': 'Admin uniquement.'}, status=403)
+
+        # Vérifier qu'il n'y a pas déjà un inventaire en cours
+        en_cours = Inventaire.objects.filter(statut=Inventaire.Statut.EN_COURS).first()
+        if en_cours:
+            return Response({
+                'error': f'Un inventaire est déjà en cours (#{en_cours.id}). Veuillez le clôturer avant d\'en initier un nouveau.',
+            }, status=400)
+
+        inventaire = Inventaire.objects.create(
+            date_debut=timezone.now(),
+            statut=Inventaire.Statut.EN_COURS,
+            initie_par=request.user,
+        )
+        return Response({
+            'id':         inventaire.id,
+            'date_debut': inventaire.date_debut,
+            'statut':     inventaire.statut,
+            'message':    'Inventaire initié avec succès.',
+        }, status=201)
+
+    # ── GET /inventaires/ — liste ─────────────────────────────────────────────
+    def list(self, request):
+        inventaires = Inventaire.objects.all().select_related('initie_par')
+        data = [{
+            'id':             inv.id,
+            'date_debut':     inv.date_debut,
+            'date_fin':       inv.date_fin,
+            'statut':         inv.statut,
+            'statut_display': inv.get_statut_display(),
+            'initie_par':     inv.initie_par.nom if inv.initie_par else '—',
+        } for inv in inventaires]
+        return Response(data)
+
+    # ── GET /inventaires/{id}/ — détail ──────────────────────────────────────
+    def retrieve(self, request, pk=None):
+        try:
+            inv = Inventaire.objects.get(pk=pk)
+        except Inventaire.DoesNotExist:
+            return Response({'error': 'Inventaire introuvable.'}, status=404)
+
+        from cliniqueApp.medicaments.models import Medicament
+        meds = Medicament.objects.filter(est_actif=True).prefetch_related('lots')
+        lignes = []
+        for med in meds:
+            stock_theorique = LotStock.objects.filter(
+                medicament=med, statut=LotStock.Statut.DISPONIBLE
+            ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
+            lignes.append({
+                'medicament_id':      med.id,
+                'medicament_nom':     med.nom_commercial,
+                'dci':                med.dci,
+                'quantite_theorique': stock_theorique,
+                'quantite_physique':  None,
+                'ecart':              None,
+                'justification':      '',
+            })
+        return Response({
+            'id':         inv.id,
+            'date_debut': inv.date_debut,
+            'statut':     inv.statut,
+            'initie_par': inv.initie_par.nom if inv.initie_par else '—',
+            'lignes':     lignes,
+        })
+
+    # ── POST /inventaires/{id}/lignes/ — saisir quantités ────────────────────
+    @action(detail=True, methods=['post'], url_path='lignes')
+    def saisir_lignes(self, request, pk=None):
+        try:
+            inv = Inventaire.objects.get(pk=pk, statut=Inventaire.Statut.EN_COURS)
+        except Inventaire.DoesNotExist:
+            return Response({'error': 'Inventaire en cours introuvable.'}, status=404)
+
+        lignes_data = request.data.get('lignes', [])
+        resultats   = []
+
+        for ligne in lignes_data:
+            med_id          = ligne.get('medicament_id')
+            qte_physique    = ligne.get('quantite_physique', 0)
+            justification   = ligne.get('justification', '')
+
+            try:
+                from cliniqueApp.medicaments.models import Medicament
+                med = Medicament.objects.get(pk=med_id)
+            except Medicament.DoesNotExist:
+                continue
+
+            qte_theorique = LotStock.objects.filter(
+                medicament=med, statut=LotStock.Statut.DISPONIBLE
+            ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
+
+            ecart = int(qte_physique) - qte_theorique
+
+            # Justification obligatoire si écart non nul
+            if ecart != 0 and not justification:
+                return Response({
+                    'error': f'Justification obligatoire pour {med.nom_commercial} (écart : {ecart}).'
+                }, status=400)
+
+            resultats.append({
+                'medicament_id':      med.id,
+                'medicament_nom':     med.nom_commercial,
+                'quantite_theorique': qte_theorique,
+                'quantite_physique':  int(qte_physique),
+                'ecart':              ecart,
+                'justification':      justification,
+            })
+
+        return Response({'lignes': resultats, 'inventaire_id': inv.id})
+
+    # ── GET /inventaires/{id}/ecarts/ ─────────────────────────────────────────
+    @action(detail=True, methods=['get'], url_path='ecarts')
+    def ecarts(self, request, pk=None):
+        return self.retrieve(request, pk=pk)
+
+    # ── POST /inventaires/{id}/valider/ ───────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        if request.user.role != 'ADMINISTRATEUR':
+            return Response({'error': 'Admin uniquement.'}, status=403)
+
+        try:
+            inv = Inventaire.objects.get(pk=pk, statut=Inventaire.Statut.EN_COURS)
+        except Inventaire.DoesNotExist:
+            return Response({'error': 'Inventaire en cours introuvable.'}, status=404)
+
+        lignes_data = request.data.get('lignes', [])
+        ajustements = []
+
+        from django.db import transaction
+        with transaction.atomic():
+            for ligne in lignes_data:
+                med_id       = ligne.get('medicament_id')
+                qte_physique = int(ligne.get('quantite_physique', 0))
+                justification = ligne.get('justification', '')
+                ecart        = ligne.get('ecart', 0)
+
+                if ecart == 0:
+                    continue
+
+                try:
+                    from cliniqueApp.medicaments.models import Medicament
+                    med = Medicament.objects.get(pk=med_id)
+                except Medicament.DoesNotExist:
+                    continue
+
+                # Régulariser le stock : ajustement sur le premier lot disponible
+                lots = LotStock.objects.filter(
+                    medicament=med, statut=LotStock.Statut.DISPONIBLE
+                ).order_by('date_peremption')
+
+                if lots.exists():
+                    lot = lots.first()
+                    ancienne_qte = lot.quantite_disponible
+                    lot.quantite_disponible = max(0, lot.quantite_disponible + ecart)
+                    if lot.quantite_disponible == 0:
+                        lot.statut = LotStock.Statut.EPUISE
+                    lot.save()
+
+                    # Journal d'audit
+                    from cliniqueApp.rapports.models import JournalAudit
+                    JournalAudit.objects.create(
+                        action='AJUSTEMENT_INVENTAIRE',
+                        entite_concernee=f'Médicament:{med.nom_commercial}',
+                        ancienne_valeur={'quantite': ancienne_qte},
+                        nouvelle_valeur={'quantite': lot.quantite_disponible, 'justification': justification},
+                        utilisateur=request.user,
+                        adresse_ip=request.META.get('REMOTE_ADDR'),
+                    )
+
+                    ajustements.append({
+                        'medicament':     med.nom_commercial,
+                        'ancienne_qte':   ancienne_qte,
+                        'nouvelle_qte':   lot.quantite_disponible,
+                        'ecart':          ecart,
+                        'justification':  justification,
+                    })
+
+            # Clôturer l'inventaire
+            inv.statut   = Inventaire.Statut.CLOTURE
+            inv.date_fin = timezone.now()
+            inv.save()
+
+        return Response({
+            'message':     f'Inventaire #{inv.id} validé et clôturé.',
+            'ajustements': ajustements,
+            'date_fin':    inv.date_fin,
         })
