@@ -3,7 +3,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from .models import Reception, LigneReception, LotStock, MouvementStock, Anomalie
-
+from .models import Inventaire
 
 # ── Générateur BL sans collision ──────────────────────────────────────────────
 
@@ -410,3 +410,36 @@ class SortieStockSerializer(serializers.Serializer):
                     destinataire=operateur,
                     est_lue=False,
                 )
+                
+                
+# ── Inventaires physiques ─────────────────────────────────────────────────────
+
+
+class LigneInventaireSerializer(serializers.Serializer):
+    medicament_id       = serializers.IntegerField()
+    medicament_nom      = serializers.CharField(read_only=True)
+    quantite_physique   = serializers.IntegerField(min_value=0)
+    quantite_theorique  = serializers.IntegerField(read_only=True)
+    ecart               = serializers.IntegerField(read_only=True)
+    justification       = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        from cliniqueApp.medicaments.models import Medicament
+        try:
+            Medicament.objects.get(pk=data['medicament_id'], est_actif=True)
+        except Medicament.DoesNotExist:
+            raise serializers.ValidationError({'medicament_id': 'Médicament introuvable.'})
+        return data
+
+
+class InventaireSerializer(serializers.ModelSerializer):
+    initie_par_nom = serializers.CharField(source='initie_par.nom', read_only=True)
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+
+    class Meta:
+        model  = Inventaire
+        fields = [
+            'id', 'date_debut', 'date_fin', 'statut', 'statut_display',
+            'initie_par', 'initie_par_nom',
+        ]
+        read_only_fields = ['id', 'date_debut', 'initie_par']
