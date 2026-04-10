@@ -14,6 +14,7 @@ import CommandesPage     from './pages/admin/CommandesPage';
 import AlertesPage       from './pages/admin/AlertesPage';
 import DashboardPage     from './pages/admin/DashboardPage';   // ← vrai tableau de bord
 import RapportPage       from './pages/admin/RapportPage';     // ← ex-DashboardPage
+import InventairePhysiquePage from './pages/admin/InventairePhysiquePage';
 
 export default function App() {
   return (
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="commandes"    element={<CommandesPage />} />
             <Route path="alertes"      element={<AlertesPage />} />
             <Route path="rapports"     element={<RapportPage />} />  {/* ← ici */}
+            <Route path="inventaire-physique" element={<InventairePhysiquePage />} />
           </Route>
 
           {/* ── Zone pharmacien ─────────────────────────────────────────── */}
