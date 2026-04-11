@@ -7,4 +7,9 @@ class RapportsConfig(AppConfig):
     label              = 'rapports'
 
     def ready(self):
-        import cliniqueApp.rapports.signals  # noqa
+        try:
+            from cliniqueApp.rapports.signals import connect_signals
+            connect_signals()
+            print('[RAPPORTS] Signals connectés.')
+        except Exception as e:
+            print(f'[RAPPORTS] Erreur : {e}')
