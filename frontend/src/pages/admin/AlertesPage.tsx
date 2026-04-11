@@ -342,122 +342,173 @@ function AlerteCard({ alerte, onRefresh }: { alerte: Alerte; onRefresh: () => vo
   const navigate = useNavigate();
   const [loading,      setLoading]      = useState(false);
   const [verifierOpen, setVerifierOpen] = useState(false);
+
+  //  Ajout états résolution
+  const [resolveOpen,    setResolveOpen]    = useState(false);
+  const [modeResolution, setModeResolution] = useState('');
+
   const nc = NIVEAU_CONFIG[alerte.niveau_urgence];
 
-  const handleResolve = async () => {
-    if (alerte.type_alerte === 'STOCK_BAS') {
-      navigate('/admin/commandes', {
-        state: { medicamentId: alerte.medicament_id, medicamentNom: alerte.medicament_nom, openDialog: true },
-      });
-      return;
-    }
-    if (alerte.type_alerte === 'PEREMPTION') {
-      navigate('/admin/inventaire', {
-        state: { action: 'mouvement', medicamentId: alerte.medicament_id },
-      });
-      return;
-    }
-    setLoading(true);
-    try {
-      await alerteService.resolve(alerte.id);
-      toast.success('Alerte résolue.');
-      onRefresh();
-    } catch {
-      toast.error('Erreur lors de la résolution.');
-    } finally {
-      setLoading(false);
-    }
+  //  Correction : handleResolve existe maintenant
+  const handleResolve = () => {
+    setResolveOpen(true);
   };
+
+  //  Dialog bien utilisé
+  function ResolveDialog() {
+    return (
+      <Dialog open={resolveOpen} onClose={() => setResolveOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}>
+
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography fontWeight={700} color="#0D47A1">Résoudre l'alerte</Typography>
+          <IconButton onClick={() => setResolveOpen(false)}><Close /></IconButton>
+        </DialogTitle>
+
+        <Divider />
+
+        <DialogContent sx={{ pt: 3 }}>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Expliquez comment ce problème a été résolu.
+          </Alert>
+
+          <Typography fontSize={13} color="#546E7A" sx={{ mb: 1 }}>
+            <strong>Alerte :</strong> {alerte.message.substring(0, 80)}...
+          </Typography>
+
+          {/* Suggestions */}
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            {[
+              'Stock commandé chez le fournisseur',
+              'Médicament détruit (périmé)',
+              'Stock transféré vers autre stock',
+              'Rupture acceptée temporairement',
+              'Nouveau stock réceptionné',
+            ].map(s => (
+              <Chip
+                key={s}
+                label={s}
+                size="small"
+                onClick={() => setModeResolution(s)}
+                sx={{
+                  cursor: 'pointer',
+                  bgcolor: modeResolution === s ? '#1565C0' : '#F5F5F5',
+                  color:   modeResolution === s ? 'white'   : '#546E7A',
+                  fontWeight: modeResolution === s ? 700 : 400,
+                }}
+              />
+            ))}
+          </Box>
+
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Description de la résolution *"
+            value={modeResolution}
+            onChange={e => setModeResolution(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+        </DialogContent>
+
+        <Divider />
+
+        <DialogActions sx={{ p: 2.5, gap: 1 }}>
+          <Button
+            onClick={() => setResolveOpen(false)}
+            variant="outlined"
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              borderColor: '#90CAF9',
+              color: '#1565C0'
+            }}
+          >
+            Annuler
+          </Button>
+
+          <Button
+            onClick={async () => {
+              if (!modeResolution.trim()) {
+                toast.error('Décrivez la résolution.');
+                return;
+              }
+
+              setLoading(true);
+              try {
+                await alerteService.resolve(alerte.id, modeResolution);
+                toast.success('✅ Alerte résolue et enregistrée.');
+                setResolveOpen(false);
+                onRefresh();
+              } catch {
+                toast.error('Erreur.');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            variant="contained"
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <CheckCircle />}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, #4CAF50, #2E7D32)'
+            }}
+          >
+            {loading ? 'Résolution...' : 'Confirmer la résolution'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  }
 
   const handleCommander = () => {
     navigate('/admin/commandes', {
-      state: { medicamentId: alerte.medicament_id, medicamentNom: alerte.medicament_nom, openDialog: true },
+      state: {
+        medicamentId: alerte.medicament_id,
+        medicamentNom: alerte.medicament_nom,
+        openDialog: true
+      },
     });
   };
 
   return (
     <>
       <Card elevation={0} sx={{
-        border:     `1px solid ${nc.border}`,
+        border: `1px solid ${nc.border}`,
         borderLeft: `4px solid ${nc.color}`,
-        borderRadius: 2, mb: 1.5,
-        bgcolor:  alerte.est_lue ? '#FAFAFA' : nc.bg,
-        opacity:  alerte.est_lue ? 0.75 : 1,
-        transition: 'all 0.3s',
+        borderRadius: 2,
+        mb: 1.5,
+        bgcolor: alerte.est_lue ? '#FAFAFA' : nc.bg,
+        opacity: alerte.est_lue ? 0.75 : 1,
       }}>
-        <Box sx={{ p: 2, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-          {/* Icône */}
-          <Box sx={{
-            width: 36, height: 36, borderRadius: '50%',
-            bgcolor: alerte.est_lue ? '#E0E0E0' : `${nc.color}20`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}>
-            {nc.icon}
-          </Box>
+        <Box sx={{ p: 2, display: 'flex', gap: 2 }}>
+          
+          {/* CONTENU */}
 
-          {/* Contenu */}
           <Box sx={{ flex: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
-              <Typography fontWeight={700} fontSize={14} color={alerte.est_lue ? '#757575' : nc.color}>
-                {alerte.message.split('—')[0].split(':')[0].trim()}
-              </Typography>
-              <Chip label={nc.label} size="small"
-                sx={{ bgcolor: nc.color, color: 'white', fontWeight: 700, fontSize: 11, height: 20 }} />
-              {alerte.est_lue && (
-                <Chip label="TRAITÉ" size="small"
-                  sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontWeight: 700, fontSize: 11, height: 20 }} />
-              )}
-            </Box>
-            <Typography fontSize={12} color={alerte.est_lue ? '#9E9E9E' : '#555'} sx={{ mb: 1, lineHeight: 1.6 }}>
-              {alerte.message}
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-              <Typography variant="caption" color="text.secondary"
-                sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Schedule sx={{ fontSize: 12 }} />
-                {tempsEcoule(alerte.date_creation)}
-              </Typography>
-              <Chip label={TYPE_LABEL[alerte.type_alerte]} size="small"
-                sx={{ bgcolor: '#F5F5F5', color: '#546E7A', fontSize: 11, height: 18 }} />
-            </Box>
+            <Typography fontWeight={700}>{alerte.message}</Typography>
           </Box>
 
-          {/* Actions */}
-          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {alerte.type_alerte === 'STOCK_BAS' && (
-              <Button size="small" variant="outlined"
-                startIcon={<ShoppingCart sx={{ fontSize: 14 }} />}
-                onClick={handleCommander}
-                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5,
-                  borderColor: '#1565C0', color: '#1565C0' }}>
-                Commander
-              </Button>
-            )}
-
-            {/* Vérifier — toujours visible */}
-            <Button size="small" variant="outlined"
-              startIcon={<VerifiedUser sx={{ fontSize: 14 }} />}
-              onClick={() => setVerifierOpen(true)}
-              sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5,
-                borderColor: '#9C27B0', color: '#6A1B9A' }}>
-              Vérifier
-            </Button>
-
-            {/* Résoudre — seulement si non résolue */}
+          {/* ACTIONS */}
+          <Box sx={{ display: 'flex', gap: 1 }}>
             {!alerte.est_lue && (
-              <Button size="small" variant="outlined"
-                startIcon={loading
-                  ? <CircularProgress size={12} />
-                  : <CheckCircle sx={{ fontSize: 14 }} />}
-                onClick={handleResolve} disabled={loading}
-                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12, py: 0.5,
-                  borderColor: '#4CAF50', color: '#2E7D32' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<CheckCircle />}
+                onClick={handleResolve}
+              >
                 Résoudre
               </Button>
             )}
           </Box>
         </Box>
       </Card>
+
+      {/* ✅ IMPORTANT : on affiche le dialog */}
+      <ResolveDialog />
 
       <VerifierModal
         alerte={alerte}

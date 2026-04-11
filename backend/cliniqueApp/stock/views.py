@@ -438,7 +438,7 @@ class InventaireViewSet(viewsets.ViewSet):
             return Response({'error': 'Admin uniquement.'}, status=403)
 
         try:
-            inv = Inventaire.objects.get(pk=pk, statut=Inventaire.Statut.EN_COURS)
+            inv = Inventaire.objects.get(pk=pk, statut='EN_COURS')
         except Inventaire.DoesNotExist:
             return Response({'error': 'Inventaire en cours introuvable.'}, status=404)
 
@@ -456,43 +456,51 @@ class InventaireViewSet(viewsets.ViewSet):
                     continue
 
                 lots = LotStock.objects.filter(
-                    medicament=med, statut=LotStock.Statut.DISPONIBLE
+                    medicament=med,
+                    statut='DISPONIBLE',
                 ).order_by('date_peremption')
 
                 if lots.exists():
-                    lot = lots.first()
+                    lot          = lots.first()
                     ancienne_qte = lot.quantite_disponible
-                    lot.quantite_disponible = max(0, lot.quantite_disponible + int(ecart))
+                    nouvelle_qte = max(0, lot.quantite_disponible + int(ecart))
+                    lot.quantite_disponible = nouvelle_qte
                     if lot.quantite_disponible == 0:
-                        lot.statut = LotStock.Statut.EPUISE
+                        lot.statut = 'EPUISE'
                     lot.save()
 
-                    from cliniqueApp.rapports.models import JournalAudit
-                    JournalAudit.objects.create(
-                        action='AJUSTEMENT_INVENTAIRE',
-                        entite_concernee=f'Médicament:{med.nom_commercial}',
-                        ancienne_valeur={'quantite': ancienne_qte},
-                        nouvelle_valeur={
-                            'quantite': lot.quantite_disponible,
-                            'justification': ligne.get('justification', ''),
-                        },
-                        utilisateur=request.user,
-                        adresse_ip=request.META.get('REMOTE_ADDR'),
-                    )
+                    try:
+                        from cliniqueApp.rapports.models import JournalAudit
+                        JournalAudit.objects.create(
+                            action='AJUSTEMENT_INVENTAIRE',
+                            entite_concernee=f'Médicament : {med.nom_commercial}',
+                            ancienne_valeur={'quantite': ancienne_qte},
+                            nouvelle_valeur={
+                                'quantite':       nouvelle_qte,
+                                'justification':  ligne.get('justification', ''),
+                                'inventaire_id':  inv.id,
+                            },
+                            utilisateur=request.user,
+                            adresse_ip=request.META.get('REMOTE_ADDR'),
+                        )
+                    except Exception as e:
+                        print(f'[JOURNAL] Erreur : {e}')
+
                     ajustements.append({
-                        'medicament':    med.nom_commercial,
-                        'ancienne_qte':  ancienne_qte,
-                        'nouvelle_qte':  lot.quantite_disponible,
-                        'ecart':         ecart,
+                        'medicament':   med.nom_commercial,
+                        'ancienne_qte': ancienne_qte,
+                        'nouvelle_qte': nouvelle_qte,
+                        'ecart':        ecart,
                         'justification': ligne.get('justification', ''),
                     })
 
-            inv.statut   = Inventaire.Statut.CLOTURE
+            # ✅ Clôturer l'inventaire
+            inv.statut   = 'CLOTURE'
             inv.date_fin = timezone.now()
             inv.save()
 
         return Response({
-            'message':     f'Inventaire #{inv.id} validé et clôturé.',
+            'message':     f'Inventaire #{inv.id} validé et clôturé avec succès.',
             'ajustements': ajustements,
             'date_fin':    inv.date_fin,
         })

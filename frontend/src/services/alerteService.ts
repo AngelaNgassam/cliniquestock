@@ -24,16 +24,42 @@ export interface SeuilConfig {
 }
 
 const alerteService = {
-  getAll:        (params?: string) => api.get<{ results: Alerte[]; count: number }>(
-                   `/alertes/${params ? '?' + params : ''}`
-                 ),
-  getNonLues:    ()               => api.get<{ count: number }>('/alertes/non_lues_count/'),
-  resolve:       (id: number)     => api.patch(`/alertes/${id}/resolve/`),
-  verifier:      (id: number)     => api.get(`/alertes/${id}/verifier/`),
-  markAllRead:   ()               => api.post('/alertes/mark_all_read/'),
-  nettoyer:      ()               => api.delete('/alertes/nettoyer/'),
-  getSeuils:     ()               => api.get<SeuilConfig>('/config/seuils/'),
-  saveSeuils:    (data: SeuilConfig) => api.post('/config/seuils/', data),
+
+  // Récupérer toutes les alertes
+  getAll: (params?: string) =>
+    api.get<{ results: Alerte[]; count: number }>(
+      `/alertes/${params ? '?' + params : ''}`
+    ),
+
+  // Nombre d’alertes non lues
+  getNonLues: () =>
+    api.get<{ count: number }>('/alertes/non_lues_count/'),
+
+  // Résoudre une alerte (avec mode personnalisé)
+  resolve: (id: number, modeResolution?: string) =>
+    api.patch(`/alertes/${id}/resolve/`, {
+      mode_resolution: modeResolution || 'Résolution manuelle.'
+    }),
+
+  // Vérifier une alerte
+  verifier: (id: number) =>
+    api.get(`/alertes/${id}/verifier/`),
+
+  // Tout marquer comme lu
+  markAllRead: () =>
+    api.post('/alertes/mark_all_read/'),
+
+  //  Nettoyer les alertes
+  nettoyer: () =>
+    api.delete('/alertes/nettoyer/'),
+
+  // Récupérer les seuils
+  getSeuils: () =>
+    api.get<SeuilConfig>('/config/seuils/'),
+
+  // Sauvegarder les seuils
+  saveSeuils: (data: SeuilConfig) =>
+    api.post('/config/seuils/', data),
 };
 
 export default alerteService;
