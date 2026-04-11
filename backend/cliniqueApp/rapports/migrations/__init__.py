@@ -1,0 +1,1 @@
+default_app_config = 'cliniqueApp.rapports.apps.RapportsConfig'
