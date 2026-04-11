@@ -18,6 +18,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import api from '../../services/authService';
 import { medicamentService } from '../../services/medicamentService';
 
+
 interface Medicament {
   id: number; nom_commercial: string; dci: string;
   forme_galenique: string; dosage: string; unite_stock: string;
@@ -429,11 +430,21 @@ export default function InventairePage() {
             sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#FFCDD2', color: '#C62828', fontWeight: 600 }}>
             Exporter (PDF)
           </Button>
+
+          {/* ✅ TON BOUTON AJOUTÉ AU BON ENDROIT */}
+          <Button variant="outlined"
+            startIcon={<Inventory2 sx={{ fontSize: 16 }} />}
+            onClick={() => navigate('/admin/inventaire-physique')}
+            sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#C8E6C9', color: '#2E7D32', fontWeight: 600 }}>
+            Inventaire physique
+          </Button>
+
           <Button variant="outlined" startIcon={<Category />}
             onClick={() => setCategDialog(true)}
             sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#C5CAE9', color: '#3949AB', fontWeight: 600 }}>
             Ajouter une catégorie
           </Button>
+
           <Button variant="contained" startIcon={<Add />}
             onClick={() => navigate('/admin/inventaire/nouveau')}
             sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
@@ -441,6 +452,7 @@ export default function InventairePage() {
               boxShadow: '0 4px 14px rgba(13,71,161,0.35)', px: 2.5 }}>
             Ajouter un médicament
           </Button>
+
         </Box>
       </Box>
 
