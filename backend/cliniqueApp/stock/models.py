@@ -206,3 +206,23 @@ class Inventaire(models.Model):
 
     def __str__(self):
         return f"Inventaire #{self.id} - {self.statut}"
+
+
+class LigneInventaire(models.Model):
+    inventaire          = models.ForeignKey(
+        Inventaire, on_delete=models.CASCADE, related_name='lignes'
+    )
+    medicament          = models.ForeignKey(
+        'medicaments.Medicament', on_delete=models.PROTECT, related_name='lignes_inventaire'
+    )
+    quantite_theorique  = models.PositiveIntegerField(default=0)
+    quantite_physique   = models.PositiveIntegerField(default=0)
+    ecart               = models.IntegerField(default=0)
+    justification       = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'ligne_inventaire'
+        unique_together = [['inventaire', 'medicament']]
+
+    def __str__(self):
+        return f"Inventaire #{self.inventaire_id} — {self.medicament.nom_commercial}"

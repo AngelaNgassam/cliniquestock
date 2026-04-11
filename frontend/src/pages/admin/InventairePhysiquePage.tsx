@@ -11,7 +11,7 @@ import {
 import {
   PlayArrow, CheckCircle, Warning, Close,
   Inventory2, ArrowBack, Save, PictureAsPdf,
-  Visibility, FilterList, Download,
+  Visibility, FilterList, Download, Delete
 } from '@mui/icons-material';
 import toast, { Toaster } from 'react-hot-toast';
 import inventaireService from '../../services/inventaireService';
@@ -289,7 +289,7 @@ export default function InventairePhysiquePage() {
     setValidating(true);
     try {
       await inventaireService.valider(sessionActive.id, lignes);
-      toast.success('✅ Inventaire validé et stock régularisé !', { duration: 5000 });
+      toast.success(' Inventaire validé et stock régularisé !', { duration: 5000 });
       setSessionActive(null);
       setLignes([]);
       fetchSessions();
@@ -350,6 +350,17 @@ export default function InventairePhysiquePage() {
       <CircularProgress size={48} />
     </Box>
   );
+
+  const handleSupprimer = async (id: number) => {
+    if (!confirm(`Supprimer l'inventaire #${id} ? Cette action est irréversible.`)) return;
+    try {
+      await inventaireService.supprimer(id);
+      toast.success(`Inventaire #${id} supprimé.`);
+      fetchSessions();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Erreur de suppression.');
+    }
+  };
 
   return (
     <Box>
@@ -602,12 +613,23 @@ export default function InventairePhysiquePage() {
                             <Visibility fontSize="small" />
                           </IconButton>
                         </Tooltip>
+
                         <Tooltip title="Télécharger PDF">
                           <IconButton size="small" sx={{ color: '#C62828' }}
                             onClick={() => handleExportSession(s)} disabled={exportLoading}>
                             {exportLoading ? <CircularProgress size={16} /> : <Download fontSize="small" />}
                           </IconButton>
                         </Tooltip>
+
+                        {/* ✅ Bouton supprimer */}
+                        {(s.statut === 'EN_COURS' || peutModifier(s)) && (
+                          <Tooltip title="Supprimer l'inventaire">
+                            <IconButton size="small" sx={{ color: '#F44336' }}
+                              onClick={() => handleSupprimer(s.id)}>
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -707,6 +729,7 @@ export default function InventairePhysiquePage() {
           </Table>
         </DialogContent>
       </Dialog>
+
     </Box>
   );
 }
