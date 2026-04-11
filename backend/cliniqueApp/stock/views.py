@@ -360,30 +360,51 @@ class InventaireViewSet(viewsets.ViewSet):
         } for inv in inventaires])
 
     def retrieve(self, request, pk=None):
-        """GET /inventaires/{id}/ — détail avec lignes"""
+        """GET /inventaires/{id}/ — retourne les lignes sauvegardées si disponibles"""
         try:
             inv = Inventaire.objects.get(pk=pk)
         except Inventaire.DoesNotExist:
             return Response({'error': 'Inventaire introuvable.'}, status=404)
 
         from cliniqueApp.medicaments.models import Medicament
-        lignes = []
-        for med in Medicament.objects.filter(est_actif=True).prefetch_related('lots'):
-            stock_theorique = LotStock.objects.filter(
-                medicament=med, statut=LotStock.Statut.DISPONIBLE
-            ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
-            lignes.append({
-                'medicament_id':      med.id,
-                'medicament_nom':     med.nom_commercial,
-                'dci':                med.dci,
-                'quantite_theorique': stock_theorique,
-                'quantite_physique':  None,
-                'ecart':              None,
-                'justification':      '',
-            })
+        from .models import LigneInventaire
+
+        # Si l'inventaire a des lignes sauvegardées → les utiliser
+        lignes_bdd = LigneInventaire.objects.filter(
+            inventaire=inv
+        ).select_related('medicament').order_by('medicament__nom_commercial')
+
+        if lignes_bdd.exists():
+            lignes = [{
+                'medicament_id':      l.medicament.id,
+                'medicament_nom':     l.medicament.nom_commercial,
+                'dci':                l.medicament.dci,
+                'quantite_theorique': l.quantite_theorique,
+                'quantite_physique':  l.quantite_physique,
+                'ecart':              l.ecart,
+                'justification':      l.justification,
+            } for l in lignes_bdd]
+        else:
+            # Inventaire en cours sans saisie → stock actuel
+            lignes = []
+            for med in Medicament.objects.filter(est_actif=True).order_by('nom_commercial'):
+                stock = LotStock.objects.filter(
+                    medicament=med, statut='DISPONIBLE'
+                ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
+                lignes.append({
+                    'medicament_id':      med.id,
+                    'medicament_nom':     med.nom_commercial,
+                    'dci':                med.dci,
+                    'quantite_theorique': stock,
+                    'quantite_physique':  None,
+                    'ecart':              None,
+                    'justification':      '',
+                })
+
         return Response({
             'id':         inv.id,
             'date_debut': inv.date_debut,
+            'date_fin':   inv.date_fin,
             'statut':     inv.statut,
             'initie_par': inv.initie_par.nom if inv.initie_par else '—',
             'lignes':     lignes,
@@ -391,37 +412,51 @@ class InventaireViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=['post'], url_path='lignes')
     def saisir_lignes(self, request, pk=None):
-        """POST /inventaires/{id}/lignes/"""
+        """POST /inventaires/{id}/lignes/ — sauvegarder en BDD"""
         try:
-            inv = Inventaire.objects.get(pk=pk, statut=Inventaire.Statut.EN_COURS)
+            inv = Inventaire.objects.get(pk=pk, statut='EN_COURS')
         except Inventaire.DoesNotExist:
             return Response({'error': 'Inventaire en cours introuvable.'}, status=404)
 
         from cliniqueApp.medicaments.models import Medicament
+        from .models import LigneInventaire
         resultats = []
+
         for ligne in request.data.get('lignes', []):
             try:
                 med = Medicament.objects.get(pk=ligne.get('medicament_id'))
             except Medicament.DoesNotExist:
                 continue
 
-            qte_physique  = ligne.get('quantite_physique', 0)
+            qte_physique  = int(ligne.get('quantite_physique', 0))
             justification = ligne.get('justification', '')
             qte_theorique = LotStock.objects.filter(
-                medicament=med, statut=LotStock.Statut.DISPONIBLE
+                medicament=med, statut='DISPONIBLE'
             ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
-            ecart = int(qte_physique) - qte_theorique
+            ecart = qte_physique - qte_theorique
 
             if ecart != 0 and not justification:
                 return Response({
                     'error': f'Justification obligatoire pour {med.nom_commercial} (écart : {ecart}).'
                 }, status=400)
 
+            # Persister en BDD
+            LigneInventaire.objects.update_or_create(
+                inventaire=inv,
+                medicament=med,
+                defaults={
+                    'quantite_theorique': qte_theorique,
+                    'quantite_physique':  qte_physique,
+                    'ecart':              ecart,
+                    'justification':      justification,
+                }
+            )
+
             resultats.append({
                 'medicament_id':      med.id,
                 'medicament_nom':     med.nom_commercial,
                 'quantite_theorique': qte_theorique,
-                'quantite_physique':  int(qte_physique),
+                'quantite_physique':  qte_physique,
                 'ecart':              ecart,
                 'justification':      justification,
             })
@@ -531,3 +566,23 @@ class InventaireViewSet(viewsets.ViewSet):
             'ajustements': ajustements,
             'date_fin':    inv.date_fin,
         })
+        
+    @action(detail=True, methods=['delete'], url_path='supprimer')
+    def supprimer(self, request, pk=None):
+        """DELETE /inventaires/{id}/supprimer/"""
+        if request.user.role != 'ADMINISTRATEUR':
+            return Response({'error': 'Admin uniquement.'}, status=403)
+        try:
+            inv = Inventaire.objects.get(pk=pk)
+        except Inventaire.DoesNotExist:
+            return Response({'error': 'Inventaire introuvable.'}, status=404)
+
+        if inv.statut == 'CLOTURE':
+            # Vérifier délai 3 jours
+            if inv.date_fin:
+                diff = (timezone.now() - inv.date_fin).days
+                if diff > 3:
+                    return Response({'error': 'Impossible de supprimer un inventaire clôturé depuis plus de 3 jours.'}, status=403)
+
+        inv.delete()
+        return Response({'message': f'Inventaire #{pk} supprimé.'})

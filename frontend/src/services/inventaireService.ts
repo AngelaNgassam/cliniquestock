@@ -26,6 +26,8 @@ const inventaireService = {
   saisirLignes:   (id: number, lignes: any[])    => api.post(`/inventaires/${id}/lignes/`, { lignes }),
   getEcarts:      (id: number)                   => api.get(`/inventaires/${id}/ecarts/`),
   valider:        (id: number, lignes: any[])    => api.post(`/inventaires/${id}/valider/`, { lignes }),
+  supprimer:      (id: number)                   => api.delete(`/inventaires/${id}/supprimer/`),
 };
+
 
 export default inventaireService;
