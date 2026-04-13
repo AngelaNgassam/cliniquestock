@@ -17,6 +17,8 @@ import RapportPage            from './pages/admin/RapportPage';
 import InventairePhysiquePage from './pages/admin/InventairePhysiquePage';
 import HistoriquePage         from './pages/admin/HistoriquePage';
 import UtilisateursPage from './pages/admin/UtilisateursPage';
+import ParametresPage from './pages/admin/ParametresPage';
+
 
 export default function App() {
   return (
@@ -54,6 +56,7 @@ export default function App() {
             <Route path="rapports"     element={<RapportPage />} />
             <Route path="historique"   element={<HistoriquePage />} />
             <Route path="utilisateurs" element={<UtilisateursPage />} />
+            <Route path="parametres" element={<ParametresPage />} />
           </Route>
 
           {/* Zone pharmacien protégée */}

@@ -58,3 +58,19 @@ class Rapport(models.Model):
 
     def __str__(self):
         return f"{self.type} - {self.date_generation:%Y-%m-%d}"
+    
+
+# Ajouter à la fin du fichier existant
+
+class Signature(models.Model):
+    nom       = models.CharField(max_length=150)
+    fonction  = models.CharField(max_length=150)
+    image     = models.ImageField(upload_to='signatures/', null=True, blank=True)
+    image_b64 = models.TextField(blank=True, default='')  # stockage base64 alternatif
+    created_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'signature'
+
+    def __str__(self):
+        return f'{self.nom} — {self.fonction}'

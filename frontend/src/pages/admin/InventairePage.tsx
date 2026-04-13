@@ -258,6 +258,32 @@ async function exporterInventairePDF(medicaments: Medicament[], userName = 'Admi
   }
 
   const slug = dateStr.replace(/\//g, '_');
+
+  // Ajouter la signature si disponible
+  try {
+    const sigRes = await api.get('/signature/');
+    const sigData = sigRes.data as any;
+    if (sigData.exists && sigData.image_b64) {
+      const lastPage = doc.getNumberOfPages();
+      doc.setPage(lastPage);
+
+      // Zone signature en bas à droite
+      const sigX = W - 80;
+      const sigY = H - 45;
+
+      doc.setDrawColor(200, 215, 240); doc.setLineWidth(0.3);
+      doc.rect(sigX - 5, sigY - 15, 75, 30, 'S');
+
+      // Image de la signature
+      doc.addImage(sigData.image_b64, 'PNG', sigX, sigY - 12, 65, 15);
+
+      doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+      doc.text(sigData.nom || '', sigX + 32, sigY + 6, { align: 'center' });
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(...C_GRIS);
+      doc.text(sigData.fonction || '', sigX + 32, sigY + 10, { align: 'center' });
+    }
+  } catch { /* signature optionnelle */ }
+
   doc.save(`inventaire-medicaments-${slug}.pdf`);
   toast.success(`PDF exporté (${totalPg} page(s)) !`);
 }
