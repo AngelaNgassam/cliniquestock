@@ -2,6 +2,8 @@ from pathlib import Path
 from decouple import Config, RepositoryEnv
 from datetime import timedelta
 
+import os
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 _env_path = BASE_DIR / ".env"
@@ -158,3 +160,8 @@ INFOBIP_SENDER_SMS        = config('INFOBIP_SENDER_SMS',        default='Cliniqu
 INFOBIP_SENDER_WHATSAPP   = config('INFOBIP_SENDER_WHATSAPP',   default='676849422')   # ton numéro WA enregistré
 INFOBIP_WA_TEMPLATE_NAME  = config('INFOBIP_WA_TEMPLATE_NAME',  default='test_whatsapp_template_name')
 INFOBIP_WA_TEMPLATE_LANG  = config('INFOBIP_WA_TEMPLATE_LANG',  default='fr')
+
+
+# Media files (uploads)
+MEDIA_URL  = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

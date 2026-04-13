@@ -10,9 +10,13 @@ import {
   Add, Edit, Block, CheckCircle, Search, Refresh,
   People, AdminPanelSettings, LocalPharmacy, Close,
   PersonOff, PersonAdd,
+  VisibilityOff,
+  Visibility,
 } from '@mui/icons-material';
 import toast, { Toaster } from 'react-hot-toast';
 import utilisateurService from '../../services/utilisateurService';
+
+
 import type { Utilisateur, UtilisateurPayload, Stats } from '../../services/utilisateurService';
 
 // ── Dialog Ajouter / Modifier ─────────────────────────────────────────────────
@@ -22,30 +26,60 @@ function UtilisateurDialog({
   open: boolean; onClose: () => void; onSaved: () => void; utilisateur: Utilisateur | null;
 }) {
   const estModif = !!utilisateur;
-  const [form,    setForm]    = useState<UtilisateurPayload>({
+  const [form,         setForm]         = useState<UtilisateurPayload>({
     nom: '', prenom: '', email: '', role: 'PHARMACIEN', password: '', est_actif: true,
   });
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
+  const [pwdErrors,    setPwdErrors]    = useState<string[]>([]);
 
   useEffect(() => {
     if (open) {
-      setError('');
+      setError(''); setPwdErrors([]); setShowPassword(false);
       if (utilisateur) {
-        setForm({ nom: utilisateur.nom, prenom: utilisateur.prenom, email: utilisateur.email,
-          role: utilisateur.role, est_actif: utilisateur.est_actif, password: '' });
+        setForm({ nom: utilisateur.nom, prenom: utilisateur.prenom,
+          email: utilisateur.email, role: utilisateur.role,
+          est_actif: utilisateur.est_actif, password: '' });
       } else {
         setForm({ nom: '', prenom: '', email: '', role: 'PHARMACIEN', password: '', est_actif: true });
       }
     }
   }, [open, utilisateur]);
 
+  // ── Validation mot de passe ────────────────────────────────────────────────
+  const validerMotDePasse = (pwd: string): string[] => {
+    const errs: string[] = [];
+    if (pwd.length < 6)                          errs.push('Au moins 6 caractères');
+    if (!/\d/.test(pwd))                         errs.push('Au moins 1 chiffre');
+    if (!/[A-Z]/.test(pwd))                      errs.push('Au moins 1 majuscule');
+    if (!/[a-z]/.test(pwd))                      errs.push('Au moins 1 minuscule');
+    return errs;
+  };
+
+  const handlePwdChange = (val: string) => {
+    setForm(p => ({ ...p, password: val }));
+    if (val) setPwdErrors(validerMotDePasse(val));
+    else     setPwdErrors([]);
+  };
+
+  const pwdForce = (): { label: string; color: string; value: number } => {
+    const pwd = form.password || '';
+    if (!pwd) return { label: '', color: '#E0E0E0', value: 0 };
+    const errs = validerMotDePasse(pwd);
+    if (errs.length === 0) return { label: 'Fort',   color: '#4CAF50', value: 100 };
+    if (errs.length <= 1)  return { label: 'Moyen',  color: '#FF9800', value: 60  };
+    return                        { label: 'Faible', color: '#F44336', value: 30  };
+  };
+
   const handleSave = async () => {
     if (!form.nom || !form.prenom || !form.email) {
       setError('Nom, prénom et email sont obligatoires.'); return;
     }
-    if (!estModif && !form.password) {
-      setError('Mot de passe obligatoire à la création.'); return;
+    if (!estModif || form.password) {
+      if (!form.password) { setError('Mot de passe obligatoire à la création.'); return; }
+      const errs = validerMotDePasse(form.password);
+      if (errs.length > 0) { setError('Mot de passe non conforme : ' + errs.join(', ')); return; }
     }
     setLoading(true);
     try {
@@ -63,6 +97,8 @@ function UtilisateurDialog({
       setError(e.response?.data?.email?.[0] || e.response?.data?.detail || 'Erreur.');
     } finally { setLoading(false); }
   };
+
+  const force = pwdForce();
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
@@ -87,10 +123,12 @@ function UtilisateurDialog({
               onChange={e => setForm(p => ({ ...p, nom: e.target.value }))}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
           </Box>
+
           <TextField label="Email *" type="email" value={form.email}
             onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
             disabled={estModif}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+
           <FormControl>
             <Select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
               sx={{ borderRadius: 2 }}>
@@ -98,11 +136,48 @@ function UtilisateurDialog({
               <MenuItem value="ADMINISTRATEUR">Administrateur</MenuItem>
             </Select>
           </FormControl>
-          <TextField
-            label={estModif ? 'Nouveau mot de passe (laisser vide = inchangé)' : 'Mot de passe *'}
-            type="password" value={form.password || ''}
-            onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+
+          {/* ── Mot de passe avec oeil ──────────────────────────────────────── */}
+          <Box>
+            <TextField
+              fullWidth
+              label={estModif ? 'Nouveau mot de passe (vide = inchangé)' : 'Mot de passe *'}
+              type={showPassword ? 'text' : 'password'}
+              value={form.password || ''}
+              onChange={e => handlePwdChange(e.target.value)}
+              error={pwdErrors.length > 0 && !!form.password}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+            {/* Force du mot de passe */}
+            {form.password && (
+              <Box sx={{ mt: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography fontSize={11} color="text.secondary">Force</Typography>
+                  <Typography fontSize={11} fontWeight={700} color={force.color}>{force.label}</Typography>
+                </Box>
+                <LinearProgress variant="determinate" value={force.value}
+                  sx={{ height: 4, borderRadius: 2, bgcolor: '#E0E0E0',
+                    '& .MuiLinearProgress-bar': { bgcolor: force.color } }} />
+                {pwdErrors.length > 0 && (
+                  <Box sx={{ mt: 0.5 }}>
+                    {pwdErrors.map(e => (
+                      <Typography key={e} fontSize={11} color="#F44336">✗ {e}</Typography>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Box>
+
           {estModif && (
             <FormControl>
               <Select value={form.est_actif ? 'actif' : 'inactif'}
