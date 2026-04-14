@@ -9,7 +9,7 @@ import {
 import {
   Add, Send, Cancel, Lock, ExpandMore, ExpandLess,
   Refresh, ShoppingCart, LocalShipping, CheckCircle,
-  History, WarningAmber, Lightbulb,
+  History, WarningAmber, Lightbulb, PictureAsPdf,
 } from '@mui/icons-material';
 import toast, { Toaster } from 'react-hot-toast';
 import commandeService from '../../services/commandeService';
@@ -18,8 +18,10 @@ import fournisseurService from '../../services/fournisseurService';
 import { medicamentService } from '../../services/medicamentService';
 import api from '../../services/authService';
 
-// ─────────────────────────────────────────────────────────────────────────────
-const STATUT_CONFIG: Record<StatutCommande, { label: string; bg: string; color: string; border: string }> = {
+// ── Statuts ───────────────────────────────────────────────────────────────────
+const STATUT_CONFIG: Record<StatutCommande, {
+  label: string; bg: string; color: string; border: string;
+}> = {
   BROUILLON:  { label: 'Brouillon',  bg: '#F5F5F5', color: '#607D8B', border: '#CFD8DC' },
   EN_ATTENTE: { label: 'En attente', bg: '#E3F2FD', color: '#1565C0', border: '#90CAF9' },
   PARTIELLE:  { label: 'Partielle',  bg: '#FFF8E1', color: '#E65100', border: '#FFB300' },
@@ -34,8 +36,201 @@ const TYPES_ANOMALIE: Record<string, string> = {
   QUANTITE_MANQUANTE:      'Quantité manquante',
 };
 
+// ── Signature ─────────────────────────────────────────────────────────────────
+async function chargerSignature(): Promise<{
+  nom: string; fonction: string; image_b64: string;
+} | null> {
+  try {
+    const res  = await api.get('/signature/');
+    const data = res.data as any;
+    return data.exists ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function ajouterSignaturePDF(
+  doc: any,
+  sig: { nom: string; fonction: string; image_b64: string } | null,
+  W: number, H: number,
+) {
+  if (!sig?.image_b64) return;
+  const C_BLEU: [number,number,number] = [13, 71, 161];
+  const C_GRIS: [number,number,number] = [96, 96, 96];
+  const sigX = W - 75;
+  const sigY = H - 42;
+  doc.setDrawColor(200, 215, 240); doc.setLineWidth(0.3);
+  doc.rect(sigX - 4, sigY - 2, 70, 28, 'S');
+  try { doc.addImage(sig.image_b64, 'PNG', sigX, sigY, 62, 14); } catch { /* ignore */ }
+  doc.setLineWidth(0.5); doc.setDrawColor(...C_GRIS);
+  doc.line(sigX, sigY + 16, sigX + 62, sigY + 16);
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+  doc.text(sig.nom, sigX + 31, sigY + 20, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...C_GRIS);
+  doc.text(sig.fonction, sigX + 31, sigY + 24, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+}
+
+// ── Export PDF commande ───────────────────────────────────────────────────────
+async function exporterCommandePDF(commande: Commande) {
+  const { default: jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  const now      = new Date();
+  const dateStr  = now.toLocaleDateString('fr-FR');
+  const heureStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+
+  const C_BLEU : [number,number,number] = [13, 71, 161];
+  const C_BLEU2: [number,number,number] = [21, 101, 192];
+  const C_GRIS : [number,number,number] = [96, 96, 96];
+  const C_VERT : [number,number,number] = [46, 125, 50];
+
+  // ── En-tête ────────────────────────────────────────────────────────────────
+  doc.setFillColor(...C_BLEU);
+  doc.rect(0, 0, W, 16, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text('CliniqueStock', 14, 11);
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text('Bon de Commande', W / 2, 11, { align: 'center' });
+  doc.text(`${dateStr} à ${heureStr}`, W - 14, 11, { align: 'right' });
+
+  // ── Titre ──────────────────────────────────────────────────────────────────
+  doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+  doc.text('BON DE COMMANDE', W / 2, 30, { align: 'center' });
+  doc.setFontSize(11); doc.setFont('helvetica', 'normal'); doc.setTextColor(...C_GRIS);
+  doc.text(commande.reference, W / 2, 37, { align: 'center' });
+
+  // ── Statut badge ───────────────────────────────────────────────────────────
+  const sc = STATUT_CONFIG[commande.statut];
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+  doc.setTextColor(sc.color as unknown as string);
+  doc.text(`Statut : ${sc.label}`, W / 2, 44, { align: 'center' });
+
+  // ── Info commande ──────────────────────────────────────────────────────────
+  let y = 52;
+  doc.setFillColor(240, 247, 255);
+  doc.roundedRect(14, y, W - 28, 28, 2, 2, 'F');
+  doc.setDrawColor(...C_BLEU2); doc.setLineWidth(0.3);
+  doc.roundedRect(14, y, W - 28, 28, 2, 2, 'S');
+
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+  doc.text('Informations de la commande', 20, y + 6);
+  doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33); doc.setFontSize(8);
+
+  const infos = [
+    ['Référence',         commande.reference],
+    ['Fournisseur',       commande.fournisseur_nom || '—'],
+    ['Date de création',  new Date(commande.date_creation).toLocaleDateString('fr-FR')],
+    ['Livraison prévue',  commande.date_livraison_prevue
+      ? new Date(commande.date_livraison_prevue).toLocaleDateString('fr-FR') : '—'],
+    ['Montant total',     `${Number(commande.montant_total).toLocaleString('fr-FR')} FCFA`],
+  ];
+
+  infos.forEach(([label, value], i) => {
+    const col = i % 2 === 0 ? 20 : W / 2 + 5;
+    const row = y + 13 + Math.floor(i / 2) * 7;
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+    doc.text(`${label} :`, col, row);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33);
+    doc.text(value, col + 30, row);
+  });
+
+  // ── Lignes de commande ─────────────────────────────────────────────────────
+  y = 86;
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+  doc.text('Détail des articles commandés', 14, y); y += 6;
+
+  const COLS_CMD = [
+    { label: 'Médicament',     x: 14, w: 60 },
+    { label: 'DCI',            x: 76, w: 30 },
+    { label: 'Qté cmdée',      x: 108, w: 18 },
+    { label: 'Qté reçue',      x: 128, w: 18 },
+    { label: 'Prix unitaire',  x: 148, w: 25 },
+    { label: 'Total (FCFA)',   x: 175, w: 25 },
+  ];
+
+  // En-tête tableau
+  doc.setFillColor(...C_BLEU2);
+  doc.rect(12, y - 5, W - 24, 7, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+  COLS_CMD.forEach(c => doc.text(c.label, c.x, y));
+  doc.setTextColor(0, 0, 0);
+  y += 5;
+
+  // Lignes
+  const ROW_H = 8;
+  commande.lignes.forEach((ligne, idx) => {
+    if (y + ROW_H > H - 50) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.setFillColor(idx % 2 === 0 ? 248 : 255, idx % 2 === 0 ? 251 : 255, 255);
+    doc.rect(12, y - 5, W - 24, ROW_H, 'F');
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+
+    const truncate = (s: string, max: number) =>
+      s && s.length > max ? s.slice(0, max - 1) + '…' : (s || '—');
+    const total = ligne.quantite_commandee * Number(ligne.prix_unitaire_estime);
+    const qteRecue = ligne.quantite_recue ?? 0;
+    const complet  = qteRecue >= ligne.quantite_commandee;
+
+    doc.setTextColor(...C_BLEU); doc.setFont('helvetica', 'bold');
+    doc.text(truncate(ligne.medicament_nom || `Med #${ligne.medicament}`, 32), COLS_CMD[0].x, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33);
+    doc.text(truncate(ligne.medicament_nom || '—', 18), COLS_CMD[1].x, y);
+    doc.text(String(ligne.quantite_commandee), COLS_CMD[2].x, y);
+    doc.setTextColor(complet ? 46 : qteRecue > 0 ? 230 : 100,
+                     complet ? 125 : qteRecue > 0 ? 81  : 100,
+                     complet ? 50  : qteRecue > 0 ? 0   : 100);
+    doc.setFont('helvetica', 'bold');
+    doc.text(String(qteRecue), COLS_CMD[3].x, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33);
+    doc.text(`${Number(ligne.prix_unitaire_estime).toLocaleString('fr-FR')}`, COLS_CMD[4].x, y);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+    doc.text(`${total.toLocaleString('fr-FR')}`, COLS_CMD[5].x, y);
+    y += ROW_H;
+  });
+
+  // ── Total ──────────────────────────────────────────────────────────────────
+  y += 4;
+  doc.setFillColor(232, 240, 255);
+  doc.roundedRect(12, y, W - 24, 12, 2, 2, 'F');
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
+  doc.text('MONTANT TOTAL :', 18, y + 8);
+  doc.setFontSize(12);
+  doc.text(
+    `${Number(commande.montant_total).toLocaleString('fr-FR')} FCFA`,
+    W - 18, y + 8, { align: 'right' }
+  );
+  y += 20;
+
+  // ── Pied de page ───────────────────────────────────────────────────────────
+  doc.setFillColor(245, 248, 255);
+  doc.rect(0, H - 12, W, 12, 'F');
+  doc.setDrawColor(200, 215, 240); doc.setLineWidth(0.2);
+  doc.line(0, H - 12, W, H - 12);
+  doc.setTextColor(...C_GRIS); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+  doc.text('CliniqueStock — Document confidentiel', 14, H - 4);
+  doc.text('Page 1 / 1', W / 2, H - 4, { align: 'center' });
+  doc.text(dateStr, W - 14, H - 4, { align: 'right' });
+
+  // ── Signature ──────────────────────────────────────────────────────────────
+  const sig = await chargerSignature();
+  if (sig) {
+    const lastPage = doc.getNumberOfPages();
+    doc.setPage(lastPage);
+    await ajouterSignaturePDF(doc, sig, W, H);
+  }
+
+  doc.save(`commande-${commande.reference}-${dateStr.replace(/\//g, '_')}.pdf`);
+  toast.success('PDF de la commande exporté !');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Dialog Réception — avec historique FILTRÉ par commande + lots suggérés
+// Dialog Réception
 // ─────────────────────────────────────────────────────────────────────────────
 function ReceptionDialog({
   commande, open, onClose, onDone,
@@ -44,97 +239,57 @@ function ReceptionDialog({
   const [dateReception, setDateReception] = useState(new Date().toISOString().slice(0, 16));
   const [receptions,    setReceptions]    = useState<any[]>([]);
   const [loadingHist,   setLoadingHist]   = useState(false);
-
-  // Numéros de lot suggérés par médicament { medicamentId: { prochain, lots_existants } }
-  const [lotsSuggeres, setLotsSuggeres] = useState<Record<number, { prochain: string; lots_existants: any[] }>>({});
-
-  // Lignes pour la nouvelle réception
-  const [lignes, setLignes] = useState<{
-    medicament:           number;
-    medicament_nom:       string;
-    quantite_commandee:   number;
-    quantite_deja_recue:  number;
-    quantite_recue:       number;
-    numero_lot:           string;
-    date_peremption:      string;
-    prix_achat_reel:      string;
-    has_anomalie:         boolean;
-    type_anomalie:        string;
-    description_anomalie: string;
-    lot_modifie:          boolean; // true si l'utilisateur a changé manuellement
+  const [lotsSuggeres,  setLotsSuggeres]  = useState<Record<number, { prochain: string }>>({});
+  const [lignes,        setLignes]        = useState<{
+    medicament: number; medicament_nom: string;
+    quantite_commandee: number; quantite_deja_recue: number;
+    quantite_recue: number; numero_lot: string;
+    date_peremption: string; prix_achat_reel: string;
+    has_anomalie: boolean; type_anomalie: string;
+    description_anomalie: string; lot_modifie: boolean;
   }[]>([]);
 
-  // ── Charger historique réceptions (FILTRE par commande.id) ─────────────────
   useEffect(() => {
     if (!open) return;
     setLoadingHist(true);
-
-    // Filtrage STRICT par commande
     api.get(`/receptions/?commande=${commande.id}`)
       .then(r => {
-        const data = (r.data as any);
-        const list = Array.isArray(data) ? data : data.results ?? [];
-        // Double vérification côté frontend
-        setReceptions(list.filter((rec: any) => rec.commande === commande.id || rec.commande_reference === commande.reference));
+        const list = Array.isArray(r.data) ? r.data : r.data.results ?? [];
+        setReceptions(list.filter((rec: any) => rec.commande === commande.id));
       })
       .catch(() => setReceptions([]))
       .finally(() => setLoadingHist(false));
 
-    // Construire les lignes avec infos pré-remplies depuis dernière réception
     const buildLignes = async () => {
-      // Récupérer les réceptions existantes pour cette commande
       let receptionsExistantes: any[] = [];
       try {
         const r = await api.get(`/receptions/?commande=${commande.id}`);
-        const data = (r.data as any);
-        receptionsExistantes = Array.isArray(data) ? data : data.results ?? [];
-        receptionsExistantes = receptionsExistantes.filter((rec: any) => rec.commande === commande.id);
-      } catch { /* pas de réceptions précédentes */ }
+        receptionsExistantes = (Array.isArray(r.data) ? r.data : r.data.results ?? [])
+          .filter((rec: any) => rec.commande === commande.id);
+      } catch { /* ignore */ }
 
-      // Pour chaque ligne de commande, chercher les infos de la dernière réception
       const nouvLignes = commande.lignes.map(l => {
         const restant = Math.max(0, l.quantite_commandee - (l.quantite_recue ?? 0));
-
-        // Trouver la dernière ligne de réception pour ce médicament
-        let dernNumLot      = '';
-        let dernDatePerem   = '';
-        let dernPrixAchat   = l.prix_unitaire_estime;
-
+        let dernNumLot = '', dernDatePerem = '', dernPrixAchat = l.prix_unitaire_estime;
         for (const rec of receptionsExistantes) {
-          const lignePrec = (rec.lignes || []).find((rl: any) => rl.medicament === l.medicament);
-          if (lignePrec) {
-            dernNumLot    = lignePrec.numero_lot    || '';
-            dernDatePerem = lignePrec.date_peremption || '';
-            dernPrixAchat = lignePrec.prix_achat_reel || l.prix_unitaire_estime;
-          }
+          const lp = (rec.lignes || []).find((rl: any) => rl.medicament === l.medicament);
+          if (lp) { dernNumLot = lp.numero_lot || ''; dernDatePerem = lp.date_peremption || ''; dernPrixAchat = lp.prix_achat_reel || l.prix_unitaire_estime; }
         }
-
         return {
-          medicament:           l.medicament,
-          medicament_nom:       l.medicament_nom || `Médicament #${l.medicament}`,
-          quantite_commandee:   l.quantite_commandee,
-          quantite_deja_recue:  l.quantite_recue ?? 0,
-          quantite_recue:       restant,
-          numero_lot:           dernNumLot,    // pré-rempli depuis dernière réception (modifiable)
-          date_peremption:      dernDatePerem, // pré-rempli depuis dernière réception (modifiable)
-          prix_achat_reel:      String(dernPrixAchat),
-          has_anomalie:         false,
-          type_anomalie:        '',
-          description_anomalie: '',
-          lot_modifie:          false,
+          medicament: l.medicament, medicament_nom: l.medicament_nom || `Médicament #${l.medicament}`,
+          quantite_commandee: l.quantite_commandee, quantite_deja_recue: l.quantite_recue ?? 0,
+          quantite_recue: restant, numero_lot: dernNumLot, date_peremption: dernDatePerem,
+          prix_achat_reel: String(dernPrixAchat), has_anomalie: false, type_anomalie: '',
+          description_anomalie: '', lot_modifie: false,
         };
       });
       setLignes(nouvLignes);
 
-      // Charger les numéros de lot suggérés pour chaque médicament
-      const suggestions: Record<number, any> = {};
+      const sugg: Record<number, any> = {};
       for (const l of commande.lignes) {
-        try {
-          const r = await api.get(`/receptions/numeros_lot/?medicament_id=${l.medicament}`);
-          suggestions[l.medicament] = r.data;
-        } catch { /* ignore */ }
+        try { const r = await api.get(`/receptions/numeros_lot/?medicament_id=${l.medicament}`); sugg[l.medicament] = r.data; } catch { /* ignore */ }
       }
-      setLotsSuggeres(suggestions);
+      setLotsSuggeres(sugg);
     };
 
     buildLignes();
@@ -145,103 +300,69 @@ function ReceptionDialog({
     setLignes(prev => prev.map((l, idx) => {
       if (idx !== i) return l;
       const updated = { ...l, [key]: value };
-
       if (key === 'numero_lot') updated.lot_modifie = true;
-
       if (key === 'quantite_recue') {
         const restant = l.quantite_commandee - l.quantite_deja_recue;
         if (Number(value) < restant && Number(value) > 0 && !l.has_anomalie) {
-          updated.has_anomalie  = true;
-          updated.type_anomalie = 'QUANTITE_MANQUANTE';
+          updated.has_anomalie = true; updated.type_anomalie = 'QUANTITE_MANQUANTE';
         }
-        if (Number(value) === restant) {
-          updated.has_anomalie  = false;
-          updated.type_anomalie = '';
-        }
+        if (Number(value) === restant) { updated.has_anomalie = false; updated.type_anomalie = ''; }
       }
-
       if (key === 'date_peremption' && value) {
         const datePerem = new Date(value);
         const dans6Mois = new Date();
         dans6Mois.setMonth(dans6Mois.getMonth() + 6);
         if (datePerem < dans6Mois && datePerem > new Date()) {
-          updated.has_anomalie  = true;
-          updated.type_anomalie = 'PEREMPTION_INSUFFISANTE';
+          updated.has_anomalie = true; updated.type_anomalie = 'PEREMPTION_INSUFFISANTE';
         }
       }
-
       return updated;
     }));
   };
 
-  const appliquerSuggestion = (i: number) => {
-    const ligne    = lignes[i];
-    const sug      = lotsSuggeres[ligne.medicament];
-    if (!sug) return;
-    updateLigne(i, 'numero_lot', sug.prochain);
-  };
-
   const handleSubmit = async () => {
-    const lignesActives = lignes.filter(l => (l.quantite_commandee - l.quantite_deja_recue) > 0);
-    const lignesInvalides = lignesActives.filter(l => !l.numero_lot || !l.date_peremption);
-    if (lignesInvalides.length > 0) {
-      toast.error('Remplissez le numéro de lot et la date de péremption pour chaque médicament.');
-      return;
+    const actives = lignes.filter(l => (l.quantite_commandee - l.quantite_deja_recue) > 0);
+    if (actives.some(l => !l.numero_lot || !l.date_peremption)) {
+      toast.error('Remplissez le numéro de lot et la date de péremption.'); return;
     }
-
     setLoading(true);
     try {
-      const payload = {
-        commande:       commande.id,
+      await api.post('/receptions/', {
+        commande: commande.id,
         date_reception: new Date(dateReception).toISOString(),
-        lignes: lignesActives.map(l => ({
-          medicament:           l.medicament,
-          quantite_recue:       l.quantite_recue,
-          numero_lot:           l.numero_lot,
-          date_peremption:      l.date_peremption,
-          prix_achat_reel:      l.prix_achat_reel,
-          has_anomalie:         l.has_anomalie,
-          type_anomalie:        l.type_anomalie,
-          description_anomalie: l.description_anomalie,
+        lignes: actives.map(l => ({
+          medicament: l.medicament, quantite_recue: l.quantite_recue,
+          numero_lot: l.numero_lot, date_peremption: l.date_peremption,
+          prix_achat_reel: l.prix_achat_reel, has_anomalie: l.has_anomalie,
+          type_anomalie: l.type_anomalie, description_anomalie: l.description_anomalie,
         })),
-      };
-
-      await api.post('/receptions/', payload);
-      toast.success('✅ Réception enregistrée ! Stock mis à jour. Email envoyé au fournisseur.', { duration: 6000 });
-      onDone();
-      onClose();
+      });
+      toast.success('✅ Réception enregistrée ! Stock mis à jour.', { duration: 6000 });
+      onDone(); onClose();
     } catch (err: any) {
-      const detail =
+      toast.error(
         err.response?.data?.detail ||
         err.response?.data?.non_field_errors?.[0] ||
         JSON.stringify(err.response?.data) ||
-        "Erreur lors de l'enregistrement.";
-      toast.error(detail);
-      console.error('Erreur réception:', err.response?.data);
-    } finally {
-      setLoading(false);
-    }
+        "Erreur lors de l'enregistrement."
+      );
+    } finally { setLoading(false); }
   };
 
   const restantTotal = lignes.reduce(
     (sum, l) => sum + Math.max(0, l.quantite_commandee - l.quantite_deja_recue), 0
   );
-
   const fmtDate = (d: string) =>
-    d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    d ? new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth
       PaperProps={{ sx: { borderRadius: 3, maxHeight: '94vh' } }}>
-
-      {/* ── En-tête ─────────────────────────────────────────────────────── */}
       <DialogTitle sx={{ pb: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{
-            width: 44, height: 44, borderRadius: 2,
+          <Box sx={{ width: 44, height: 44, borderRadius: 2,
             background: 'linear-gradient(135deg, #43A047, #1B5E20)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <LocalShipping sx={{ color: 'white', fontSize: 22 }} />
           </Box>
           <Box>
@@ -263,35 +384,24 @@ function ReceptionDialog({
       <Divider sx={{ mt: 2 }} />
 
       <DialogContent sx={{ pt: 2.5 }}>
-
-        {/* ── Historique FILTRÉ par cette commande ─────────────────────── */}
+        {/* Historique réceptions précédentes */}
         {commande.statut === 'PARTIELLE' && (
           <Box sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
               <History sx={{ color: '#F57F17', fontSize: 18 }} />
               <Typography fontWeight={700} color="#E65100" fontSize={14}>
-                Réceptions précédentes pour cette commande (lecture seule)
+                Réceptions précédentes (lecture seule)
               </Typography>
             </Box>
-
             {loadingHist ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                <CircularProgress size={24} />
-              </Box>
+              <CircularProgress size={24} />
             ) : receptions.length === 0 ? (
-              <Typography fontSize={13} color="text.secondary">
-                Aucune réception précédente pour cette commande.
-              </Typography>
-            ) : receptions.map((rec, ri) => (
+              <Typography fontSize={13} color="text.secondary">Aucune réception précédente.</Typography>
+            ) : receptions.map(rec => (
               <Card key={rec.id} elevation={0} sx={{
-                border: '1px solid #FFE082', borderRadius: 2,
-                bgcolor: '#FFFDE7', mb: 1.5, overflow: 'hidden',
-              }}>
-                <Box sx={{
-                  px: 2, py: 1, bgcolor: '#FFF8E1',
-                  borderBottom: '1px solid #FFE082',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
+                border: '1px solid #FFE082', borderRadius: 2, bgcolor: '#FFFDE7', mb: 1.5 }}>
+                <Box sx={{ px: 2, py: 1, bgcolor: '#FFF8E1', borderBottom: '1px solid #FFE082',
+                  display: 'flex', justifyContent: 'space-between' }}>
                   <Typography fontWeight={700} fontSize={13} color="#E65100">
                     📦 {rec.numero_bon_livraison}
                   </Typography>
@@ -309,30 +419,18 @@ function ReceptionDialog({
                   </TableHead>
                   <TableBody>
                     {(rec.lignes || []).map((rl: any, rli: number) => (
-                      <TableRow key={rli} sx={{ opacity: 0.9 }}>
+                      <TableRow key={rli}>
                         <TableCell sx={{ fontSize: 12 }}>{rl.medicament_nom}</TableCell>
                         <TableCell sx={{ fontSize: 12 }}>{rl.quantite_recue}</TableCell>
-                        <TableCell sx={{ fontSize: 12, fontFamily: 'monospace', color: '#1565C0' }}>
-                          {rl.numero_lot || '—'}
-                        </TableCell>
+                        <TableCell sx={{ fontSize: 12, fontFamily: 'monospace', color: '#1565C0' }}>{rl.numero_lot || '—'}</TableCell>
                         <TableCell sx={{ fontSize: 12 }}>
-                          {rl.date_peremption
-                            ? new Date(rl.date_peremption).toLocaleDateString('fr-FR')
-                            : '—'}
+                          {rl.date_peremption ? new Date(rl.date_peremption).toLocaleDateString('fr-FR') : '—'}
                         </TableCell>
                         <TableCell>
-                          {rl.has_anomalie ? (
-                            <Chip
-                              label={rl.anomalies?.[0]?.type_anomalie
-                                ? (TYPES_ANOMALIE[rl.anomalies[0].type_anomalie] || rl.anomalies[0].type_anomalie)
-                                : 'Anomalie'}
-                              size="small"
-                              sx={{ bgcolor: '#FFEBEE', color: '#C62828', fontSize: 10 }}
-                            />
-                          ) : (
-                            <Chip label="OK" size="small"
-                              sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontSize: 10 }} />
-                          )}
+                          {rl.has_anomalie
+                            ? <Chip label={TYPES_ANOMALIE[rl.anomalies?.[0]?.type_anomalie] || 'Anomalie'} size="small" sx={{ bgcolor: '#FFEBEE', color: '#C62828', fontSize: 10 }} />
+                            : <Chip label="OK" size="small" sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontSize: 10 }} />
+                          }
                         </TableCell>
                       </TableRow>
                     ))}
@@ -340,7 +438,6 @@ function ReceptionDialog({
                 </Table>
               </Card>
             ))}
-
             <Divider sx={{ my: 2.5 }} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
               <Add sx={{ color: '#1B5E20', fontSize: 18 }} />
@@ -351,43 +448,31 @@ function ReceptionDialog({
           </Box>
         )}
 
-        {/* ── Date de réception ─────────────────────────────────────────── */}
+        {/* Date réception */}
         <Box sx={{ mb: 3 }}>
-          <TextField
-            label="Date de réception *"
-            type="datetime-local"
-            value={dateReception}
-            onChange={e => setDateReception(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-            sx={{ width: 290, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
+          <TextField label="Date de réception *" type="datetime-local"
+            value={dateReception} onChange={e => setDateReception(e.target.value)}
+            InputLabelProps={{ shrink: true }} size="small"
+            sx={{ width: 290, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            Le numéro de bon de livraison sera généré automatiquement (format BL-AAAA-NNN)
+            Le numéro de bon sera généré automatiquement (format BL-AAAA-NNN)
           </Typography>
         </Box>
 
-        {/* ── Lignes médicaments ────────────────────────────────────────── */}
         <Typography fontWeight={700} color="#1B5E20" sx={{ mb: 2 }} fontSize={15}>
           Médicaments à réceptionner
         </Typography>
 
         {lignes.map((ligne, i) => {
-          const restant     = ligne.quantite_commandee - ligne.quantite_deja_recue;
+          const restant    = ligne.quantite_commandee - ligne.quantite_deja_recue;
           const dejaComplet = restant <= 0;
           const suggestion  = lotsSuggeres[ligne.medicament];
 
           return (
             <Card key={i} elevation={0} sx={{
-              border: dejaComplet
-                ? '1px solid #C8E6C9'
-                : ligne.has_anomalie
-                  ? '1.5px solid #FFCDD2'
-                  : '1px solid #E0E0E0',
-              borderRadius: 2, mb: 2, overflow: 'hidden',
-              opacity: dejaComplet ? 0.65 : 1,
+              border: dejaComplet ? '1px solid #C8E6C9' : ligne.has_anomalie ? '1.5px solid #FFCDD2' : '1px solid #E0E0E0',
+              borderRadius: 2, mb: 2, overflow: 'hidden', opacity: dejaComplet ? 0.65 : 1,
             }}>
-              {/* Header */}
               <Box sx={{
                 px: 2, py: 1.2,
                 bgcolor: dejaComplet ? '#F1F8E9' : ligne.has_anomalie ? '#FFF5F5' : '#FAFAFA',
@@ -400,21 +485,12 @@ function ReceptionDialog({
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   {ligne.quantite_deja_recue > 0 && (
-                    <Chip
-                      label={`Déjà reçu : ${ligne.quantite_deja_recue}/${ligne.quantite_commandee}`}
-                      size="small"
-                      sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontWeight: 600, fontSize: 11 }}
-                    />
+                    <Chip label={`Déjà reçu : ${ligne.quantite_deja_recue}/${ligne.quantite_commandee}`}
+                      size="small" sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontWeight: 600, fontSize: 11 }} />
                   )}
-                  <Chip
-                    label={dejaComplet ? 'Complet' : `Restant : ${restant}`}
-                    size="small"
-                    sx={{
-                      bgcolor: dejaComplet ? '#C8E6C9' : '#E3F2FD',
-                      color:   dejaComplet ? '#2E7D32' : '#1565C0',
-                      fontWeight: 600, fontSize: 11,
-                    }}
-                  />
+                  <Chip label={dejaComplet ? 'Complet' : `Restant : ${restant}`} size="small"
+                    sx={{ bgcolor: dejaComplet ? '#C8E6C9' : '#E3F2FD',
+                      color: dejaComplet ? '#2E7D32' : '#1565C0', fontWeight: 600, fontSize: 11 }} />
                 </Box>
               </Box>
 
@@ -426,78 +502,47 @@ function ReceptionDialog({
                 </Box>
               ) : (
                 <Box sx={{ p: 2 }}>
-                  {/* Champs réception */}
                   <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1.5, mb: 1.5 }}>
-                    <TextField
-                      label={`Qté reçue * (max: ${restant})`}
-                      type="number"
+                    <TextField label={`Qté reçue * (max: ${restant})`} type="number"
                       value={ligne.quantite_recue}
                       onChange={e => updateLigne(i, 'quantite_recue', Number(e.target.value))}
-                      inputProps={{ min: 0, max: restant }}
-                      size="small"
+                      inputProps={{ min: 0, max: restant }} size="small"
                       error={ligne.quantite_recue > restant}
                       helperText={ligne.quantite_recue > restant ? `Maximum : ${restant}` : ''}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
-                    />
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
 
-                    {/* N° lot avec suggestion */}
-                    <Box sx={{ position: 'relative' }}>
-                      <TextField
-                        label="N° lot *"
-                        value={ligne.numero_lot}
+                    <Box>
+                      <TextField label="N° lot *" value={ligne.numero_lot}
                         onChange={e => updateLigne(i, 'numero_lot', e.target.value)}
-                        size="small"
-                        fullWidth
-                        placeholder={suggestion?.prochain || 'ex: LOT-2026A'}
-                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
-                        helperText={
-                          ligne.numero_lot && !ligne.lot_modifie
-                            ? '📋 Pré-rempli depuis réception précédente'
-                            : ''
-                        }
+                        size="small" fullWidth placeholder={suggestion?.prochain || 'ex: LOT-2026A'}
+                        helperText={ligne.numero_lot && !ligne.lot_modifie ? '📋 Pré-rempli depuis réception précédente' : ''}
                         FormHelperTextProps={{ sx: { color: '#F57F17', fontSize: 10 } }}
-                      />
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
                       {suggestion?.prochain && (
-                        <Tooltip title={`Utiliser le numéro suggéré : ${suggestion.prochain}`}>
-                          <Button
-                            size="small"
-                            startIcon={<Lightbulb sx={{ fontSize: 14 }} />}
-                            onClick={() => appliquerSuggestion(i)}
-                            sx={{
-                              mt: 0.5, py: 0, px: 1, fontSize: 10,
-                              textTransform: 'none', color: '#1565C0',
-                              '&:hover': { bgcolor: '#E3F2FD' },
-                            }}
-                          >
+                        <Tooltip title={`Utiliser : ${suggestion.prochain}`}>
+                          <Button size="small" startIcon={<Lightbulb sx={{ fontSize: 14 }} />}
+                            onClick={() => updateLigne(i, 'numero_lot', suggestion.prochain)}
+                            sx={{ mt: 0.5, py: 0, px: 1, fontSize: 10, textTransform: 'none', color: '#1565C0' }}>
                             Suggéré : {suggestion.prochain}
                           </Button>
                         </Tooltip>
                       )}
                     </Box>
 
-                    <TextField
-                      label="Date péremption *"
-                      type="date"
+                    <TextField label="Date péremption *" type="date"
                       value={ligne.date_peremption}
                       onChange={e => updateLigne(i, 'date_peremption', e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                      size="small"
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
-                    />
-                    <TextField
-                      label="Prix achat réel (FCFA) *"
-                      type="number"
+                      InputLabelProps={{ shrink: true }} size="small"
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
+
+                    <TextField label="Prix achat réel (FCFA) *" type="number"
                       value={ligne.prix_achat_reel}
                       onChange={e => updateLigne(i, 'prix_achat_reel', e.target.value)}
-                      size="small"
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
-                    />
+                      size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
                   </Box>
 
-                  {/* Bouton anomalie */}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Button
-                      size="small"
+                    <Button size="small"
                       variant={ligne.has_anomalie ? 'contained' : 'outlined'}
                       color={ligne.has_anomalie ? 'error' : 'inherit'}
                       startIcon={<WarningAmber fontSize="small" />}
@@ -505,41 +550,28 @@ function ReceptionDialog({
                         updateLigne(i, 'has_anomalie', !ligne.has_anomalie);
                         if (ligne.has_anomalie) updateLigne(i, 'type_anomalie', '');
                       }}
-                      sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: 12 }}
-                    >
+                      sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: 12 }}>
                       {ligne.has_anomalie ? 'Anomalie signalée' : 'Signaler une anomalie'}
                     </Button>
-                    {ligne.has_anomalie && (
-                      <Typography variant="caption" color="error.main" fontWeight={500}>
-                        Traitement automatique selon le type
-                      </Typography>
-                    )}
                   </Box>
 
-                  {/* Champs anomalie */}
                   {ligne.has_anomalie && (
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 1.5, mt: 1.5 }}>
                       <FormControl size="small">
                         <InputLabel>Type d'anomalie *</InputLabel>
-                        <Select
-                          value={ligne.type_anomalie}
-                          label="Type d'anomalie *"
+                        <Select value={ligne.type_anomalie} label="Type d'anomalie *"
                           onChange={e => updateLigne(i, 'type_anomalie', e.target.value)}
-                          sx={{ borderRadius: 1.5 }}
-                        >
+                          sx={{ borderRadius: 1.5 }}>
                           {Object.entries(TYPES_ANOMALIE).map(([val, label]) => (
                             <MenuItem key={val} value={val}>{label}</MenuItem>
                           ))}
                         </Select>
                       </FormControl>
-                      <TextField
-                        label="Description de l'anomalie"
-                        size="small"
+                      <TextField label="Description de l'anomalie" size="small"
                         value={ligne.description_anomalie}
                         onChange={e => updateLigne(i, 'description_anomalie', e.target.value)}
                         placeholder="Décrivez l'anomalie observée..."
-                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
-                      />
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
                     </Box>
                   )}
                 </Box>
@@ -548,19 +580,15 @@ function ReceptionDialog({
           );
         })}
 
-        {/* ── Légende ──────────────────────────────────────────────────── */}
-        <Card elevation={0} sx={{
-          bgcolor: '#F3E5F5', border: '1px solid #CE93D8',
-          borderRadius: 2, p: 1.5, mt: 1,
-        }}>
+        <Card elevation={0} sx={{ bgcolor: '#F3E5F5', border: '1px solid #CE93D8', borderRadius: 2, p: 1.5, mt: 1 }}>
           <Typography variant="caption" color="#6A1B9A" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
             ℹ️ Règles de traitement automatique des anomalies
           </Typography>
           {[
-            ['Produit non conforme', 'Non intégré au stock — bon de retour fournisseur généré'],
-            ['Médicament endommagé', 'Placé en stock quarantaine automatiquement'],
-            ['Péremption < 6 mois',  'Alerte bloquante déclenchée, confirmation requise'],
-            ['Quantité manquante',   'Quantité réellement reçue intégrée — commande → Partielle'],
+            ['Produit non conforme', 'Non intégré au stock'],
+            ['Médicament endommagé', 'Stock quarantaine'],
+            ['Péremption < 6 mois',  'Alerte déclenchée'],
+            ['Quantité manquante',   'Commande → Partielle'],
           ].map(([type, effet]) => (
             <Typography key={type} variant="caption" color="#4A148C" display="block">
               • <strong>{type}</strong> → {effet}
@@ -575,16 +603,11 @@ function ReceptionDialog({
           sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#A5D6A7', color: '#388E3C' }}>
           Annuler
         </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
+        <Button onClick={handleSubmit} variant="contained"
           disabled={loading || restantTotal === 0}
           startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <CheckCircle />}
-          sx={{
-            borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 3,
-            background: restantTotal === 0 ? '#BDBDBD' : 'linear-gradient(135deg, #43A047, #1B5E20)',
-          }}
-        >
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 3,
+            background: restantTotal === 0 ? '#BDBDBD' : 'linear-gradient(135deg, #43A047, #1B5E20)' }}>
           {loading ? 'Enregistrement...' : restantTotal === 0 ? 'Tout déjà reçu' : 'Enregistrer la réception'}
         </Button>
       </DialogActions>
@@ -593,12 +616,13 @@ function ReceptionDialog({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ligne commande dans le tableau
+// CommandeRow
 // ─────────────────────────────────────────────────────────────────────────────
 function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: () => void }) {
   const [open,          setOpen]          = useState(false);
   const [loading,       setLoading]       = useState(false);
   const [receptionOpen, setReceptionOpen] = useState(false);
+  const [pdfLoading,    setPdfLoading]    = useState(false);
   const sc = STATUT_CONFIG[commande.statut];
 
   const handleAction = async (action: () => Promise<any>, msg: string) => {
@@ -606,11 +630,20 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
     setLoading(true);
     try {
       await action();
-      toast.success('Action effectuée avec succès !');
+      toast.success('Action effectuée !');
       onRefresh();
     } catch (err: any) {
-      toast.error(err.response?.data?.error || "Erreur lors de l'action.");
+      toast.error(err.response?.data?.error || "Erreur.");
     } finally { setLoading(false); }
+  };
+
+  const handleExportPDF = async () => {
+    setPdfLoading(true);
+    try {
+      await exporterCommandePDF(commande);
+    } catch {
+      toast.error('Erreur lors de la génération du PDF.');
+    } finally { setPdfLoading(false); }
   };
 
   return (
@@ -622,7 +655,9 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
             {new Date(commande.date_creation).toLocaleDateString('fr-FR')}
           </Typography>
         </TableCell>
-        <TableCell><Typography fontSize={13} fontWeight={500}>{commande.fournisseur_nom}</Typography></TableCell>
+        <TableCell>
+          <Typography fontSize={13} fontWeight={500}>{commande.fournisseur_nom}</Typography>
+        </TableCell>
         <TableCell>
           <Typography fontSize={13}>
             {commande.date_livraison_prevue
@@ -643,6 +678,16 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
             <Tooltip title={open ? 'Masquer' : 'Voir les lignes'}>
               <IconButton size="small" sx={{ color: '#2196F3' }} onClick={() => setOpen(!open)}>
                 {open ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+
+            {/* ✅ Bouton PDF */}
+            <Tooltip title="Télécharger le PDF">
+              <IconButton size="small" sx={{ color: '#C62828' }}
+                onClick={handleExportPDF} disabled={pdfLoading}>
+                {pdfLoading
+                  ? <CircularProgress size={14} />
+                  : <PictureAsPdf fontSize="small" />}
               </IconButton>
             </Tooltip>
 
@@ -671,7 +716,7 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
               <Tooltip title="Annuler">
                 <IconButton size="small" sx={{ color: '#F44336' }} disabled={loading}
                   onClick={() => handleAction(() => commandeService.annuler(commande.id),
-                    `Annuler ${commande.reference} ? Le fournisseur sera notifié. Irréversible.`)}>
+                    `Annuler ${commande.reference} ? Irréversible.`)}>
                   <Cancel fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -681,7 +726,7 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
               <Tooltip title="Clôturer">
                 <IconButton size="small" sx={{ color: '#9C27B0' }} disabled={loading}
                   onClick={() => handleAction(() => commandeService.cloture(commande.id),
-                    `Clôturer ${commande.reference} ? Email envoyé au fournisseur.`)}>
+                    `Clôturer ${commande.reference} ?`)}>
                   <Lock fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -718,9 +763,11 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
                     const complet  = qteRecue >= ligne.quantite_commandee;
                     return (
                       <TableRow key={i}>
-                        <TableCell><Typography fontSize={13} fontWeight={600}>
-                          {ligne.medicament_nom || `Médicament #${ligne.medicament}`}
-                        </Typography></TableCell>
+                        <TableCell>
+                          <Typography fontSize={13} fontWeight={600}>
+                            {ligne.medicament_nom || `Médicament #${ligne.medicament}`}
+                          </Typography>
+                        </TableCell>
                         <TableCell><Typography fontSize={13}>{ligne.quantite_commandee}</Typography></TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -732,7 +779,9 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Typography fontSize={13}>{Number(ligne.prix_unitaire_estime).toLocaleString()} FCFA</Typography>
+                          <Typography fontSize={13}>
+                            {Number(ligne.prix_unitaire_estime).toLocaleString()} FCFA
+                          </Typography>
                         </TableCell>
                         <TableCell>
                           <Typography fontSize={13} fontWeight={700} color="#1565C0">
@@ -773,12 +822,12 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
   useEffect(() => {
     if (!open) return;
     fournisseurService.getAll().then(r => {
-      const data = r.data as any;
-      setFournisseurs(Array.isArray(data) ? data : data.results ?? []);
+      const d = r.data as any;
+      setFournisseurs(Array.isArray(d) ? d : d.results ?? []);
     }).catch(() => {});
     medicamentService.getAll().then((r: any) => {
-      const data = r.data;
-      setMedicaments(Array.isArray(data) ? data : data.results ?? []);
+      const d = r.data;
+      setMedicaments(Array.isArray(d) ? d : d.results ?? []);
     }).catch(() => {});
   }, [open]);
 
@@ -790,7 +839,7 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
       const u = { ...l, [key]: value };
       if (key === 'medicament') {
         const med = medicaments.find(m => m.id === value);
-        if (med) u.prix_unitaire_estime = String(med.prix_achat ?? med.prix_vente ?? med.prix_unitaire ?? '');
+        if (med) u.prix_unitaire_estime = String(med.prix_achat ?? med.prix_unitaire ?? '');
       }
       return u;
     }));
@@ -828,13 +877,18 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
+      PaperProps={{ sx: { borderRadius: 3 } }}>
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #2196F3, #1565C0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box sx={{ width: 40, height: 40, borderRadius: 2,
+            background: 'linear-gradient(135deg, #2196F3, #1565C0)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ShoppingCart sx={{ color: 'white', fontSize: 20 }} />
           </Box>
-          <Typography fontWeight={800} color="#0D47A1" fontSize={18}>Nouveau bon de commande</Typography>
+          <Typography fontWeight={800} color="#0D47A1" fontSize={18}>
+            Nouveau bon de commande
+          </Typography>
         </Box>
       </DialogTitle>
       <Divider />
@@ -850,17 +904,20 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
             </Select>
           </FormControl>
           <TextField label="Date de livraison prévue" type="date" value={dateLivraison}
-            onChange={e => setDateLivraison(e.target.value)} InputLabelProps={{ shrink: true }}
+            onChange={e => setDateLivraison(e.target.value)}
+            InputLabelProps={{ shrink: true }}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         </Box>
         <Divider sx={{ mb: 2 }} />
         <Typography fontWeight={700} color="#0D47A1" sx={{ mb: 2 }}>Lignes de commande</Typography>
         {lignes.map((ligne, i) => (
-          <Box key={i} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 1.5, mb: 1.5, alignItems: 'flex-start' }}>
+          <Box key={i} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto',
+            gap: 1.5, mb: 1.5, alignItems: 'flex-start' }}>
             <FormControl>
               <InputLabel>Médicament *</InputLabel>
               <Select value={ligne.medicament} label="Médicament *"
-                onChange={e => updateLigne(i, 'medicament', e.target.value)} sx={{ borderRadius: 2 }}>
+                onChange={e => updateLigne(i, 'medicament', e.target.value)}
+                sx={{ borderRadius: 2 }}>
                 {medicaments.filter(m => m.est_actif).map(m => (
                   <MenuItem key={m.id} value={m.id}>{m.nom_commercial}</MenuItem>
                 ))}
@@ -868,7 +925,8 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
             </FormControl>
             <TextField label="Quantité *" type="number" value={ligne.quantite_commandee}
               onChange={e => updateLigne(i, 'quantite_commandee', Number(e.target.value))}
-              inputProps={{ min: 1 }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+              inputProps={{ min: 1 }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
             <TextField label="Prix unitaire (FCFA) *" type="number" value={ligne.prix_unitaire_estime}
               onChange={e => updateLigne(i, 'prix_unitaire_estime', e.target.value)}
               helperText={ligne.medicament && ligne.prix_unitaire_estime ? '✓ auto-rempli' : ' '}
@@ -882,19 +940,30 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
           sx={{ mt: 1, borderRadius: 2, textTransform: 'none' }}>
           + Ajouter une ligne
         </Button>
-        <Box sx={{ mt: 3, p: 2.5, borderRadius: 2, background: 'linear-gradient(135deg, #E3F2FD, #BBDEFB)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ mt: 3, p: 2.5, borderRadius: 2,
+          background: 'linear-gradient(135deg, #E3F2FD, #BBDEFB)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography fontWeight={700} color="#0D47A1" fontSize={15}>Total estimé</Typography>
-          <Typography variant="h5" fontWeight={900} color="#1565C0">{total.toLocaleString()} FCFA</Typography>
+          <Typography variant="h5" fontWeight={900} color="#1565C0">
+            {total.toLocaleString()} FCFA
+          </Typography>
         </Box>
       </DialogContent>
       <Divider />
       <DialogActions sx={{ p: 2.5, gap: 1 }}>
-        <Button onClick={onClose} variant="outlined" sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>Annuler</Button>
+        <Button onClick={onClose} variant="outlined"
+          sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>
+          Annuler
+        </Button>
         <Button onClick={() => handleSubmit('brouillon')} variant="outlined" disabled={loading}
-          sx={{ borderRadius: 2, textTransform: 'none', color: '#607D8B', borderColor: '#B0BEC5' }}>Enregistrer brouillon</Button>
+          sx={{ borderRadius: 2, textTransform: 'none', color: '#607D8B', borderColor: '#B0BEC5' }}>
+          Enregistrer brouillon
+        </Button>
         <Button onClick={() => handleSubmit('envoyer')} variant="contained" disabled={loading}
           startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <Send />}
-          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: 'linear-gradient(135deg, #2196F3, #1565C0)', boxShadow: '0 4px 12px rgba(33,150,243,0.35)' }}>
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
+            background: 'linear-gradient(135deg, #2196F3, #1565C0)',
+            boxShadow: '0 4px 12px rgba(33,150,243,0.35)' }}>
           {loading ? 'Envoi...' : 'Valider et envoyer'}
         </Button>
       </DialogActions>
@@ -915,11 +984,14 @@ export default function CommandesPage() {
   const fetchCommandes = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const res = await commandeService.getAll();
+      const res  = await commandeService.getAll();
       const data = res.data as any;
       setCommandes(Array.isArray(data) ? data : data.results ?? []);
-    } catch { setError('Erreur lors du chargement des commandes.'); }
-    finally { setLoading(false); }
+    } catch {
+      setError('Erreur lors du chargement des commandes.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchCommandes(); }, [fetchCommandes]);
@@ -938,23 +1010,32 @@ export default function CommandesPage() {
 
   return (
     <Box>
-      <Toaster position="top-right" toastOptions={{ style: { borderRadius: '10px', fontFamily: 'inherit' } }} />
+      <Toaster position="top-right"
+        toastOptions={{ style: { borderRadius: '10px', fontFamily: 'inherit' } }} />
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+        mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" fontWeight={800} color="#0D47A1">Gestion des Commandes</Typography>
+          <Typography variant="h4" fontWeight={800} color="#0D47A1">
+            Gestion des Commandes
+          </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Créez et suivez vos bons de commande fournisseurs.
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1.5 }}>
           <Tooltip title="Actualiser">
-            <IconButton onClick={fetchCommandes} sx={{ color: '#2196F3', border: '1px solid #E3F2FD' }}>
+            <IconButton onClick={fetchCommandes}
+              sx={{ color: '#2196F3', border: '1px solid #E3F2FD' }}>
               <Refresh />
             </IconButton>
           </Tooltip>
-          <Button variant="contained" startIcon={<Add />} onClick={() => setDialogOpen(true)}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, background: 'linear-gradient(135deg, #2196F3, #1565C0)', boxShadow: '0 4px 15px rgba(33,150,243,0.3)', px: 2.5 }}>
+          <Button variant="contained" startIcon={<Add />}
+            onClick={() => setDialogOpen(true)}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
+              background: 'linear-gradient(135deg, #2196F3, #1565C0)',
+              boxShadow: '0 4px 15px rgba(33,150,243,0.3)', px: 2.5 }}>
             Nouveau bon de commande
           </Button>
         </Box>
@@ -968,21 +1049,28 @@ export default function CommandesPage() {
           { label: 'Partielles',      value: kpis.partielles, color: '#E65100', bg: '#FFF8E1' },
           { label: 'Livrées',         value: kpis.livrees,    color: '#2E7D32', bg: '#E8F5E9' },
         ].map(({ label, value, color, bg }) => (
-          <Card key={label} elevation={0} sx={{ p: 2.5, border: '1px solid', borderColor: bg, borderRadius: 3, flex: 1, minWidth: 130, background: `linear-gradient(135deg, white, ${bg}22)` }}>
+          <Card key={label} elevation={0} sx={{ p: 2.5, border: '1px solid', borderColor: bg,
+            borderRadius: 3, flex: 1, minWidth: 130,
+            background: `linear-gradient(135deg, white, ${bg}22)` }}>
             <Typography variant="body2" color="text.secondary" fontWeight={500}>{label}</Typography>
             <Typography variant="h4" fontWeight={900} color={color} sx={{ my: 0.5 }}>{value}</Typography>
           </Card>
         ))}
-        <Card elevation={0} sx={{ p: 2.5, border: '1px solid #E3F2FD', borderRadius: 3, flex: 2, minWidth: 200, background: 'linear-gradient(135deg, white, #E3F2FD22)' }}>
+        <Card elevation={0} sx={{ p: 2.5, border: '1px solid #E3F2FD', borderRadius: 3,
+          flex: 2, minWidth: 200, background: 'linear-gradient(135deg, white, #E3F2FD22)' }}>
           <Typography variant="body2" color="text.secondary" fontWeight={500}>Volume total</Typography>
-          <Typography variant="h5" fontWeight={900} color="#1565C0" sx={{ my: 0.5 }}>{kpis.montant.toLocaleString()} FCFA</Typography>
+          <Typography variant="h5" fontWeight={900} color="#1565C0" sx={{ my: 0.5 }}>
+            {kpis.montant.toLocaleString()} FCFA
+          </Typography>
         </Card>
       </Box>
 
       {/* Filtres */}
       <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Typography variant="body2" color="text.secondary" fontWeight={600} sx={{ mr: 1 }}>Filtrer :</Typography>
+          <Typography variant="body2" color="text.secondary" fontWeight={600} sx={{ mr: 1 }}>
+            Filtrer :
+          </Typography>
           {[
             { value: 'tous',       label: 'Toutes',     count: kpis.total },
             { value: 'EN_ATTENTE', label: 'En attente', count: kpis.en_attente },
@@ -993,28 +1081,47 @@ export default function CommandesPage() {
             <Chip key={value}
               label={`${label}${count > 0 ? ` (${count})` : ''}`}
               onClick={() => setFilterStatut(value)}
-              sx={{ cursor: 'pointer', fontWeight: filterStatut === value ? 700 : 400, bgcolor: filterStatut === value ? '#1565C0' : '#F5F5F5', color: filterStatut === value ? 'white' : '#546E7A' }} />
+              sx={{
+                cursor:     'pointer',
+                fontWeight: filterStatut === value ? 700 : 400,
+                bgcolor:    filterStatut === value ? '#1565C0' : '#F5F5F5',
+                color:      filterStatut === value ? 'white'   : '#546E7A',
+              }} />
           ))}
         </Box>
       </Card>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      {/* Tableau */}
       <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, overflow: 'hidden' }}>
         <TableContainer>
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F0F7FF' }}>
                 {['Référence', 'Fournisseur', 'Livraison prévue', 'Montant', 'Statut', 'Actions'].map(h => (
-                  <TableCell key={h} sx={{ fontWeight: 700, color: '#455A64', fontSize: 12, py: 1.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</TableCell>
+                  <TableCell key={h} sx={{ fontWeight: 700, color: '#455A64', fontSize: 12,
+                    py: 1.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {h}
+                  </TableCell>
                 ))}
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 8 }}><CircularProgress size={36} /><Typography color="text.secondary" sx={{ mt: 1.5 }}>Chargement...</Typography></TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                    <CircularProgress size={36} />
+                    <Typography color="text.secondary" sx={{ mt: 1.5 }}>Chargement...</Typography>
+                  </TableCell>
+                </TableRow>
               ) : commandesFiltrees.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 8 }}><ShoppingCart sx={{ fontSize: 48, color: '#B0BEC5', mb: 1 }} /><Typography color="text.secondary">Aucune commande trouvée.</Typography></TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                    <ShoppingCart sx={{ fontSize: 48, color: '#B0BEC5', mb: 1 }} />
+                    <Typography color="text.secondary">Aucune commande trouvée.</Typography>
+                  </TableCell>
+                </TableRow>
               ) : commandesFiltrees.map(commande => (
                 <CommandeRow key={commande.id} commande={commande} onRefresh={fetchCommandes} />
               ))}
@@ -1023,7 +1130,11 @@ export default function CommandesPage() {
         </TableContainer>
       </Card>
 
-      <NouvelleCommandeDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onCreated={fetchCommandes} />
+      <NouvelleCommandeDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onCreated={fetchCommandes}
+      />
     </Box>
   );
 }
