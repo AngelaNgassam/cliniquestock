@@ -1,15 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Typography, Card, Button, TextField, Tabs, Tab,
-  Divider, CircularProgress, Alert, Switch, FormControlLabel,
-  InputAdornment, IconButton, Tooltip,
+  Divider, CircularProgress, Alert, Switch,
 } from '@mui/material';
 import {
   Settings, Notifications, Inventory2, Save,
-  Refresh, Draw, Delete, Undo, CheckCircle,
-  Visibility, VisibilityOff,
+  Draw, Delete, CheckCircle,
 } from '@mui/icons-material';
-import SignatureCanvas from 'react-signature-canvas';
 import toast, { Toaster } from 'react-hot-toast';
 import api from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
@@ -19,6 +16,180 @@ const signatureService = {
   get:  ()          => api.get('/signature/'),
   save: (data: any) => api.post('/signature/', data),
 };
+
+// ── Canvas signature maison (sans lib externe pour éviter le bug) ────────────
+function SignaturePad({
+  onSave, onClear, sigExistante,
+}: {
+  onSave:        (dataUrl: string) => void;
+  onClear:       () => void;
+  sigExistante?: string | null;
+}) {
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const drawing     = useRef(false);
+  const isEmpty     = useRef(true);
+
+  // ── Redimensionner le canvas quand le conteneur change de taille ───────────
+  const resizeCanvas = useCallback(() => {
+    const canvas    = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    // Sauvegarder le contenu actuel
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width  = canvas.width;
+    tempCanvas.height = canvas.height;
+    tempCanvas.getContext('2d')?.drawImage(canvas, 0, 0);
+
+    // Ajuster la taille réelle du canvas
+    const rect    = container.getBoundingClientRect();
+    canvas.width  = rect.width;
+    canvas.height = 180;
+
+    // Fond blanc
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Restaurer le contenu
+      if (!isEmpty.current) ctx.drawImage(tempCanvas, 0, 0);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth   = 2;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+    }
+  }, []);
+
+  useEffect(() => {
+    resizeCanvas();
+    const observer = new ResizeObserver(resizeCanvas);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [resizeCanvas]);
+
+  // ── Coordonnées correctes (tient compte du scale CSS) ─────────────────────
+  const getPos = (e: MouseEvent | TouchEvent): { x: number; y: number } => {
+    const canvas = canvasRef.current!;
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    if ('touches' in e) {
+      const touch = e.touches[0];
+      return {
+        x: (touch.clientX - rect.left) * scaleX,
+        y: (touch.clientY - rect.top)  * scaleY,
+      };
+    }
+    return {
+      x: ((e as MouseEvent).clientX - rect.left) * scaleX,
+      y: ((e as MouseEvent).clientY - rect.top)  * scaleY,
+    };
+  };
+
+  // ── Dessin ─────────────────────────────────────────────────────────────────
+  const startDraw = useCallback((e: MouseEvent | TouchEvent) => {
+    e.preventDefault();
+    drawing.current = true;
+    isEmpty.current = false;
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  }, []);
+
+  const draw = useCallback((e: MouseEvent | TouchEvent) => {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }, []);
+
+  const stopDraw = useCallback(() => {
+    drawing.current = false;
+  }, []);
+
+  // ── Attacher les événements ────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener('mousedown',  startDraw, { passive: false });
+    canvas.addEventListener('mousemove',  draw,      { passive: false });
+    canvas.addEventListener('mouseup',    stopDraw);
+    canvas.addEventListener('mouseleave', stopDraw);
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove',  draw,      { passive: false });
+    canvas.addEventListener('touchend',   stopDraw);
+
+    return () => {
+      canvas.removeEventListener('mousedown',  startDraw);
+      canvas.removeEventListener('mousemove',  draw);
+      canvas.removeEventListener('mouseup',    stopDraw);
+      canvas.removeEventListener('mouseleave', stopDraw);
+      canvas.removeEventListener('touchstart', startDraw);
+      canvas.removeEventListener('touchmove',  draw);
+      canvas.removeEventListener('touchend',   stopDraw);
+    };
+  }, [startDraw, draw, stopDraw]);
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const handleEffacer = () => {
+    const canvas = canvasRef.current;
+    const ctx    = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    isEmpty.current = true;
+    onClear();
+  };
+
+  const handleSauvegarder = () => {
+    if (isEmpty.current) {
+      toast.error('Veuillez dessiner votre signature.');
+      return;
+    }
+    const dataUrl = canvasRef.current?.toDataURL('image/png') || '';
+    onSave(dataUrl);
+  };
+
+  return (
+    <Box ref={containerRef} sx={{ width: '100%' }}>
+      <Alert severity="info" icon={false}
+        sx={{ mb: 1.5, borderRadius: 2, fontSize: 12, py: 0.5 }}>
+        ✏️ Dessinez votre signature ci-dessous (souris ou doigt sur mobile)
+      </Alert>
+      <Box sx={{
+        border: '2px dashed #90CAF9', borderRadius: 2, overflow: 'hidden',
+        cursor: 'crosshair', bgcolor: 'white', width: '100%',
+        '&:hover': { borderColor: '#1565C0', borderStyle: 'solid' },
+      }}>
+        <canvas
+          ref={canvasRef}
+          style={{ display: 'block', width: '100%', height: 180, touchAction: 'none' }}
+        />
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
+        <Button size="small" variant="outlined" startIcon={<Delete />}
+          onClick={handleEffacer} color="error"
+          sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12 }}>
+          Effacer
+        </Button>
+        <Button size="small" variant="contained" startIcon={<CheckCircle />}
+          onClick={handleSauvegarder}
+          sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12,
+            background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
+          Utiliser cette signature
+        </Button>
+      </Box>
+    </Box>
+  );
+}
 
 // ── Onglet Notifications ──────────────────────────────────────────────────────
 function OngletNotifications() {
@@ -39,27 +210,27 @@ function OngletNotifications() {
 
   const handleSave = async () => {
     setSaving(true);
-    await new Promise(r => setTimeout(r, 800)); // Simulé
-    toast.success('Préférences de notification enregistrées.');
+    await new Promise(r => setTimeout(r, 600));
+    toast.success('Préférences enregistrées.');
     setSaving(false);
   };
 
   const NotifRow = ({ label, desc, keyEmail, keySms }: {
     label: string; desc: string; keyEmail: string; keySms: string;
   }) => (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2,
-      borderBottom: '1px solid #F0F4FF' }}>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      py: 2, borderBottom: '1px solid #F0F4FF' }}>
       <Box>
         <Typography fontSize={14} fontWeight={600} color="#0D47A1">{label}</Typography>
         <Typography fontSize={12} color="text.secondary">{desc}</Typography>
       </Box>
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
         <Box sx={{ textAlign: 'center' }}>
-          <Typography fontSize={10} color="text.secondary">✉️</Typography>
+          <Typography fontSize={10} color="text.secondary">✉️ Email</Typography>
           <Switch checked={(prefs as any)[keyEmail]} onChange={() => toggle(keyEmail)} size="small" />
         </Box>
         <Box sx={{ textAlign: 'center' }}>
-          <Typography fontSize={10} color="text.secondary">📱</Typography>
+          <Typography fontSize={10} color="text.secondary">📱 SMS</Typography>
           <Switch checked={(prefs as any)[keySms]} onChange={() => toggle(keySms)} size="small" />
         </Box>
       </Box>
@@ -96,12 +267,13 @@ function OngletNotifications() {
           <TextField label="Numéro d'Urgence (SMS)" value={prefs.telephone_urgence}
             onChange={e => setPrefs(p => ({ ...p, telephone_urgence: e.target.value }))}
             placeholder="+237 6XX XXX XXX"
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            helperText="Les notifications critiques ignorent les horaires de silence." />
+            helperText="Les notifications critiques ignorent les horaires de silence."
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         </Box>
       </Card>
 
-      <Button variant="contained" startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
+      <Button variant="contained"
+        startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
         onClick={handleSave} disabled={saving}
         sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
           background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
@@ -111,11 +283,11 @@ function OngletNotifications() {
   );
 }
 
-// ── Onglet Seuils de stock ────────────────────────────────────────────────────
+// ── Onglet Seuils ─────────────────────────────────────────────────────────────
 function OngletSeuils() {
   const [seuils, setSeuils] = useState({
-    seuil_stock_global: 10,
-    seuil_critique:     5,
+    seuil_stock_global:        10,
+    seuil_critique:            5,
     seuil_peremption_warning:  7,
     seuil_peremption_critique: 3,
   });
@@ -139,17 +311,17 @@ function OngletSeuils() {
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {[
-            { label: 'Seuil de stock global (unités)', key: 'seuil_stock_global', color: '#F57F17',
+            { label: 'Seuil de stock global (unités)', key: 'seuil_stock_global',        color: '#F57F17',
               desc: 'Déclenche une alerte Avertissement.' },
-            { label: 'Seuil critique (unités)',        key: 'seuil_critique',     color: '#C62828',
+            { label: 'Seuil critique (unités)',        key: 'seuil_critique',             color: '#C62828',
               desc: 'Déclenche une alerte Critique.' },
-            { label: 'Avertissement péremption (jours)', key: 'seuil_peremption_warning', color: '#F57F17',
+            { label: 'Avertissement péremption (j)',   key: 'seuil_peremption_warning',   color: '#F57F17',
               desc: 'Alerte si lot expire dans moins de X jours.' },
-            { label: 'Critique péremption (jours)',    key: 'seuil_peremption_critique', color: '#C62828',
+            { label: 'Critique péremption (j)',        key: 'seuil_peremption_critique',  color: '#C62828',
               desc: 'Alerte critique si lot expire dans moins de X jours.' },
           ].map(({ label, key, color, desc }) => (
-            <Box key={key} sx={{ p: 2, border: `1px solid ${color}30`, borderLeft: `4px solid ${color}`,
-              borderRadius: 2, bgcolor: `${color}08` }}>
+            <Box key={key} sx={{ p: 2, border: `1px solid ${color}30`,
+              borderLeft: `4px solid ${color}`, borderRadius: 2, bgcolor: `${color}08` }}>
               <Typography fontSize={13} fontWeight={700} color={color} sx={{ mb: 0.5 }}>{label}</Typography>
               <Typography fontSize={12} color="text.secondary" sx={{ mb: 1.5 }}>{desc}</Typography>
               <TextField type="number" size="small"
@@ -161,7 +333,8 @@ function OngletSeuils() {
           ))}
         </Box>
       </Card>
-      <Button variant="contained" startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
+      <Button variant="contained"
+        startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
         onClick={handleSave} disabled={saving}
         sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
           background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
@@ -173,46 +346,41 @@ function OngletSeuils() {
 
 // ── Onglet Signature ──────────────────────────────────────────────────────────
 function OngletSignature() {
-  const { user }      = useAuthStore();
-  const sigRef        = useRef<SignatureCanvas>(null);
-  const [nom,         setNom]         = useState(user ? `${user.prenom} ${user.nom}` : '');
-  const [fonction,    setFonction]    = useState('Pharmacien en chef');
-  const [saving,      setSaving]      = useState(false);
-  const [loading,     setLoading]     = useState(true);
-  const [sigExistante, setSigExistante] = useState<string | null>(null);
-  const [modeDessin,  setModeDessin]  = useState(false);
+  const { user }    = useAuthStore();
+  const [nom,       setNom]       = useState(user ? `${user.prenom} ${user.nom}` : '');
+  const [fonction,  setFonction]  = useState('Pharmacien en chef');
+  const [saving,    setSaving]    = useState(false);
+  const [loading,   setLoading]   = useState(true);
+  const [sigB64,    setSigB64]    = useState<string | null>(null);  // signature validée
+  const [modeDessin, setModeDessin] = useState(false);
 
   useEffect(() => {
-    signatureService.get().then(r => {
-      const data = r.data as any;
-      if (data.exists) {
-        setNom(data.nom);
-        setFonction(data.fonction);
-        setSigExistante(data.image_b64);
-      }
-    }).catch(() => {}).finally(() => setLoading(false));
+    signatureService.get()
+      .then(r => {
+        const d = r.data as any;
+        if (d.exists) {
+          setNom(d.nom);
+          setFonction(d.fonction);
+          setSigB64(d.image_b64);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleEffacer = () => sigRef.current?.clear();
+  const handleSignatureSaved = (dataUrl: string) => {
+    setSigB64(dataUrl);
+    setModeDessin(false);
+    toast.success('Signature prête — cliquez sur "Enregistrer" pour sauvegarder.');
+  };
 
   const handleEnregistrer = async () => {
     if (!nom.trim()) { toast.error('Nom du signataire requis.'); return; }
-
-    let imageB64 = '';
-    if (modeDessin && sigRef.current) {
-      if (sigRef.current.isEmpty()) { toast.error('Veuillez dessiner votre signature.'); return; }
-      imageB64 = sigRef.current.getTrimmedCanvas().toDataURL('image/png');
-    } else if (sigExistante) {
-      imageB64 = sigExistante;
-    } else {
-      toast.error('Veuillez dessiner votre signature.'); return;
-    }
+    if (!sigB64)     { toast.error('Veuillez dessiner votre signature.'); return; }
 
     setSaving(true);
     try {
-      await signatureService.save({ nom, fonction, image: imageB64 });
-      setSigExistante(imageB64);
-      setModeDessin(false);
+      await signatureService.save({ nom, fonction, image: sigB64 });
       toast.success('✅ Signature enregistrée avec succès !', { duration: 4000 });
     } catch { toast.error('Erreur lors de l\'enregistrement.'); }
     finally { setSaving(false); }
@@ -232,10 +400,12 @@ function OngletSignature() {
           Informations du signataire
         </Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-          <TextField label="Nom du signataire *" value={nom} onChange={e => setNom(e.target.value)}
+          <TextField label="Nom du signataire *" value={nom}
+            onChange={e => setNom(e.target.value)}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-          <TextField label="Fonction" value={fonction} onChange={e => setFonction(e.target.value)}
-            placeholder="ex: Pharmacien en chef, Propriétaire"
+          <TextField label="Fonction" value={fonction}
+            onChange={e => setFonction(e.target.value)}
+            placeholder="Pharmacien en chef"
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         </Box>
       </Card>
@@ -245,24 +415,25 @@ function OngletSignature() {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Draw sx={{ color: '#1565C0', fontSize: 20 }} />
-            <Typography fontWeight={700} color="#0D47A1" fontSize={15}>
-              Zone de signature
-            </Typography>
+            <Typography fontWeight={700} color="#0D47A1" fontSize={15}>Zone de signature</Typography>
           </Box>
-          {sigExistante && !modeDessin && (
-            <Button size="small" variant="outlined" onClick={() => setModeDessin(true)}
+          {sigB64 && !modeDessin && (
+            <Button size="small" variant="outlined"
+              onClick={() => setModeDessin(true)}
               sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12 }}>
               Modifier la signature
             </Button>
           )}
         </Box>
 
-        {/* Signature existante */}
-        {sigExistante && !modeDessin && (
-          <Box sx={{ border: '2px solid #E3F2FD', borderRadius: 2, p: 2, bgcolor: '#FAFCFF',
-            display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 160 }}>
+        {/* Afficher la signature validée */}
+        {sigB64 && !modeDessin && (
+          <Box sx={{ border: '2px solid #E3F2FD', borderRadius: 2, p: 3,
+            bgcolor: '#FAFCFF', display: 'flex', justifyContent: 'center',
+            alignItems: 'center', minHeight: 150 }}>
             <Box sx={{ textAlign: 'center' }}>
-              <img src={sigExistante} alt="Signature" style={{ maxHeight: 100, maxWidth: '100%' }} />
+              <img src={sigB64} alt="Signature"
+                style={{ maxHeight: 100, maxWidth: '100%', display: 'block', margin: '0 auto' }} />
               <Typography fontSize={13} fontWeight={700} color="#0D47A1" sx={{ mt: 1 }}>{nom}</Typography>
               <Typography fontSize={12} color="text.secondary">{fonction}</Typography>
             </Box>
@@ -270,79 +441,59 @@ function OngletSignature() {
         )}
 
         {/* Canvas dessin */}
-        {(!sigExistante || modeDessin) && (
+        {(!sigB64 || modeDessin) && (
           <>
-            <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-              Dessinez votre signature dans la zone ci-dessous (souris ou doigt sur mobile).
-            </Alert>
-            <Box sx={{
-              border: '2px dashed #90CAF9', borderRadius: 2, bgcolor: 'white',
-              cursor: 'crosshair', overflow: 'hidden',
-              '&:hover': { borderColor: '#1565C0' },
-            }}>
-              <SignatureCanvas
-                ref={sigRef}
-                penColor="black"
-                canvasProps={{
-                  width:  600,
-                  height: 160,
-                  style: { width: '100%', height: 160, display: 'block' },
-                }}
-                backgroundColor="white"
-              />
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
-              <Button size="small" variant="outlined" startIcon={<Delete />}
-                onClick={handleEffacer} color="error"
-                sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12 }}>
-                Effacer
-              </Button>
-              {modeDessin && (
-                <Button size="small" variant="outlined"
-                  onClick={() => setModeDessin(false)}
-                  sx={{ borderRadius: 2, textTransform: 'none', fontSize: 12 }}>
-                  Annuler
-                </Button>
-              )}
-            </Box>
+            {modeDessin && sigB64 && (
+              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                Dessinez une nouvelle signature. L'ancienne sera remplacée.
+              </Alert>
+            )}
+            <SignaturePad
+              onSave={handleSignatureSaved}
+              onClear={() => {}}
+              sigExistante={sigB64}
+            />
           </>
         )}
       </Card>
 
       {/* Aperçu PDF */}
-      {(sigExistante || modeDessin) && (
+      {sigB64 && (
         <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3, mb: 3 }}>
           <Typography fontWeight={700} color="#0D47A1" fontSize={15} sx={{ mb: 2 }}>
-            Aperçu dans le document
+            Aperçu dans le document PDF
           </Typography>
-          <Box sx={{
-            bgcolor: '#F8FBFF', border: '1px solid #E3F2FD', borderRadius: 2,
-            p: 3, display: 'inline-block', minWidth: 200,
-          }}>
-            <Box sx={{ borderBottom: '1px solid #CFD8DC', pb: 1, mb: 1, minWidth: 180, minHeight: 80,
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-              {sigExistante && !modeDessin && (
-                <img src={sigExistante} alt="Signature" style={{ maxHeight: 70, maxWidth: 180 }} />
-              )}
-              {modeDessin && (
-                <Typography fontSize={11} color="text.secondary" fontStyle="italic">
-                  (signature en cours)
-                </Typography>
-              )}
+          <Box sx={{ bgcolor: '#F8FBFF', border: '1px solid #E3F2FD', borderRadius: 2,
+            p: 3, display: 'inline-block', minWidth: 220 }}>
+            <Box sx={{ borderBottom: '1px solid #CFD8DC', pb: 1, mb: 1,
+              display: 'flex', justifyContent: 'center', alignItems: 'flex-end', minHeight: 80 }}>
+              <img src={sigB64} alt="Signature"
+                style={{ maxHeight: 70, maxWidth: 200, display: 'block' }} />
             </Box>
-            <Typography fontSize={13} fontWeight={700} color="#0D47A1" sx={{ textAlign: 'center' }}>{nom}</Typography>
-            <Typography fontSize={12} color="text.secondary" sx={{ textAlign: 'center' }}>{fonction}</Typography>
+            <Typography fontSize={13} fontWeight={700} color="#0D47A1"
+              sx={{ textAlign: 'center' }}>{nom}</Typography>
+            <Typography fontSize={12} color="text.secondary"
+              sx={{ textAlign: 'center' }}>{fonction}</Typography>
           </Box>
         </Card>
       )}
 
-      <Button variant="contained"
-        startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <CheckCircle />}
-        onClick={handleEnregistrer} disabled={saving}
-        sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
-          background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
-        {saving ? 'Enregistrement...' : 'Enregistrer la signature'}
-      </Button>
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        <Button variant="contained"
+          startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <CheckCircle />}
+          onClick={handleEnregistrer} disabled={saving || !sigB64}
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
+            background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
+          {saving ? 'Enregistrement...' : 'Enregistrer la signature'}
+        </Button>
+        {!sigB64 && !modeDessin && (
+          <Button variant="outlined" startIcon={<Draw />}
+            onClick={() => setModeDessin(true)}
+            sx={{ borderRadius: 2, textTransform: 'none' }}>
+            Dessiner ma signature
+          </Button>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -356,12 +507,12 @@ function OngletSysteme() {
       </Typography>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {[
-          ['Nom du système',   'CliniqueStock Enterprise'],
-          ['Version',          'v1.0.4'],
-          ['Environnement',    'Production'],
-          ['Base de données',  'PostgreSQL 16'],
-          ['Backend',          'Django 6.0.3 + DRF'],
-          ['Frontend',         'React 18 + TypeScript'],
+          ['Nom du système',  'CliniqueStock Enterprise'],
+          ['Version',         'v1.0.4'],
+          ['Environnement',   'Production'],
+          ['Base de données', 'PostgreSQL 16'],
+          ['Backend',         'Django 6.0.3 + DRF'],
+          ['Frontend',        'React 18 + TypeScript'],
         ].map(([label, value]) => (
           <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between',
             p: 1.5, bgcolor: '#F8FBFF', borderRadius: 2 }}>
@@ -378,38 +529,27 @@ function OngletSysteme() {
 export default function ParametresPage() {
   const [onglet, setOnglet] = useState(0);
 
-  const onglets = [
-    { label: 'Notifications',  icon: <Notifications sx={{ fontSize: 18 }} /> },
-    { label: 'Seuils de Stock', icon: <Inventory2   sx={{ fontSize: 18 }} /> },
-    { label: 'Signature',       icon: <Draw         sx={{ fontSize: 18 }} /> },
-    { label: 'Système & API',   icon: <Settings     sx={{ fontSize: 18 }} /> },
-  ];
-
   return (
     <Box>
       <Toaster position="top-right" />
 
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" fontWeight={800} color="#0D47A1">Paramètres du Système</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Gérez les préférences de votre clinique, les seuils d'inventaire et les connexions API.
-          </Typography>
-        </Box>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" fontWeight={800} color="#0D47A1">Paramètres du Système</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          Gérez les préférences de votre clinique, les seuils d'inventaire et les connexions API.
+        </Typography>
       </Box>
 
-      {/* Tabs */}
       <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, mb: 3 }}>
         <Tabs value={onglet} onChange={(_, v) => setOnglet(v)}
           sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13 } }}>
-          {onglets.map((o, i) => (
-            <Tab key={i} label={o.label} icon={o.icon} iconPosition="start" />
-          ))}
+          <Tab label="Notifications"  icon={<Notifications  sx={{ fontSize: 17 }} />} iconPosition="start" />
+          <Tab label="Seuils de Stock" icon={<Inventory2    sx={{ fontSize: 17 }} />} iconPosition="start" />
+          <Tab label="Signature"      icon={<Draw           sx={{ fontSize: 17 }} />} iconPosition="start" />
+          <Tab label="Système & API"  icon={<Settings       sx={{ fontSize: 17 }} />} iconPosition="start" />
         </Tabs>
       </Card>
 
-      {/* Contenu */}
       {onglet === 0 && <OngletNotifications />}
       {onglet === 1 && <OngletSeuils />}
       {onglet === 2 && <OngletSignature />}
