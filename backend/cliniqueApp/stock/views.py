@@ -107,30 +107,54 @@ class StockViewSet(viewsets.ViewSet):
         return Response(stock_data)
 
     def retrieve(self, request, pk=None):
-        from cliniqueApp.medicaments.models import Medicament
-
+        """GET /inventaires/{id}/ — retourne les lignes depuis BDD si disponibles"""
         try:
-            med = Medicament.objects.get(pk=pk)
-        except Medicament.DoesNotExist:
-            return Response({'error': 'Médicament introuvable.'}, status=404)
+            inv = Inventaire.objects.get(pk=pk)
+        except Inventaire.DoesNotExist:
+            return Response({'error': 'Inventaire introuvable.'}, status=404)
 
-        lots = med.lots.all().order_by('date_peremption')
-        lots_data = [{
-            'id':                  lot.id,
-            'numero_lot':          lot.numero_lot,
-            'date_peremption':     lot.date_peremption,
-            'quantite_disponible': lot.quantite_disponible,
-            'prix_achat':          float(lot.prix_achat),
-            'statut':              lot.statut,
-            'expire':              lot.date_peremption < timezone.now().date(),
-            'proche_peremption':   (lot.date_peremption - timezone.now().date()).days <= 90,
-        } for lot in lots]
+        from cliniqueApp.medicaments.models import Medicament
+        from .models import LigneInventaire
+
+        lignes_bdd = LigneInventaire.objects.filter(
+            inventaire=inv
+        ).select_related('medicament').order_by('medicament__nom_commercial')
+
+        if lignes_bdd.exists():
+            #  Utiliser les données BDD (quantités saisies)
+            lignes = [{
+                'medicament_id':      l.medicament.id,
+                'medicament_nom':     l.medicament.nom_commercial,
+                'dci':                l.medicament.dci,
+                'quantite_theorique': l.quantite_theorique,
+                'quantite_physique':  l.quantite_physique,
+                'ecart':              l.ecart,
+                'justification':      l.justification,
+            } for l in lignes_bdd]
+        else:
+            # Inventaire en cours sans saisie → stock actuel
+            lignes = []
+            for med in Medicament.objects.filter(est_actif=True).order_by('nom_commercial'):
+                stock = LotStock.objects.filter(
+                    medicament=med, statut='DISPONIBLE'
+                ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
+                lignes.append({
+                    'medicament_id':      med.id,
+                    'medicament_nom':     med.nom_commercial,
+                    'dci':                med.dci,
+                    'quantite_theorique': stock,
+                    'quantite_physique':  None,
+                    'ecart':              None,
+                    'justification':      '',
+                })
 
         return Response({
-            'medicament_id':  med.id,
-            'nom_commercial': med.nom_commercial,
-            'dci':            med.dci,
-            'lots':           lots_data,
+            'id':         inv.id,
+            'date_debut': inv.date_debut,
+            'date_fin':   inv.date_fin,
+            'statut':     inv.statut,
+            'initie_par': inv.initie_par.nom if inv.initie_par else '—',
+            'lignes':     lignes,
         })
 
 
@@ -468,9 +492,8 @@ class InventaireViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
-        """POST /inventaires/{id}/valider/"""
+        """POST /inventaires/{id}/valider/ — valide ET persiste les lignes"""
         try:
-            # ✅ Ne pas filtrer par statut ici — on vérifie après
             inv = Inventaire.objects.get(pk=pk)
         except Inventaire.DoesNotExist:
             return Response({'error': 'Inventaire introuvable.'}, status=404)
@@ -481,83 +504,100 @@ class InventaireViewSet(viewsets.ViewSet):
         if inv.statut == 'CLOTURE':
             return Response({'error': 'Cet inventaire est déjà clôturé.'}, status=400)
 
-        ajustements = []
+        from cliniqueApp.medicaments.models import Medicament
+        from .models import LigneInventaire
 
+        ajustements = []
         try:
             with transaction.atomic():
-                lignes_data = request.data.get('lignes', [])
-
-                for ligne in lignes_data:
+                for ligne in request.data.get('lignes', []):
                     ecart = ligne.get('ecart', 0)
-                    if ecart is None or int(ecart) == 0:
-                        continue
+                    if ecart is None:
+                        ecart = 0
 
-                    med_id = ligne.get('medicament_id')
+                    med_id       = ligne.get('medicament_id')
+                    qte_physique = int(ligne.get('quantite_physique', 0))
+                    justification = ligne.get('justification', '')
+
                     if not med_id:
                         continue
 
                     try:
-                        from cliniqueApp.medicaments.models import Medicament
                         med = Medicament.objects.get(pk=int(med_id))
                     except Medicament.DoesNotExist:
                         continue
 
-                    # Chercher le premier lot disponible
-                    lot = LotStock.objects.filter(
-                        medicament=med,
-                    ).order_by('-quantite_disponible').first()
+                    qte_theorique = LotStock.objects.filter(
+                        medicament=med, statut='DISPONIBLE'
+                    ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
 
-                    if not lot:
-                        # Créer un lot fictif si aucun n'existe
+                    #  Toujours persister la LigneInventaire (même écart nul)
+                    LigneInventaire.objects.update_or_create(
+                        inventaire=inv,
+                        medicament=med,
+                        defaults={
+                            'quantite_theorique': qte_theorique,
+                            'quantite_physique':  qte_physique,
+                            'ecart':              int(ecart),
+                            'justification':      justification,
+                        }
+                    )
+
+                    if int(ecart) == 0:
                         continue
 
-                    ancienne_qte = lot.quantite_disponible
-                    nouvelle_qte = max(0, ancienne_qte + int(ecart))
-                    lot.quantite_disponible = nouvelle_qte
+                    # Régulariser le stock
+                    lots = LotStock.objects.filter(
+                        medicament=med,
+                    ).order_by('-quantite_disponible')
 
-                    if lot.quantite_disponible == 0:
-                        lot.statut = 'EPUISE'
-                    elif lot.statut == 'EPUISE' and lot.quantite_disponible > 0:
-                        lot.statut = 'DISPONIBLE'
-                    lot.save()
+                    if lots.exists():
+                        lot          = lots.first()
+                        ancienne_qte = lot.quantite_disponible
+                        nouvelle_qte = max(0, ancienne_qte + int(ecart))
+                        lot.quantite_disponible = nouvelle_qte
 
-                    # Journal d'audit — try/except pour ne pas bloquer
-                    try:
-                        from cliniqueApp.rapports.models import JournalAudit
-                        JournalAudit.objects.create(
-                            action='AJUSTEMENT_INVENTAIRE',
-                            entite_concernee=f'Médicament : {med.nom_commercial}',
-                            ancienne_valeur={'quantite': ancienne_qte},
-                            nouvelle_valeur={
-                                'quantite':      nouvelle_qte,
-                                'justification': ligne.get('justification', ''),
-                                'inventaire_id': inv.id,
-                            },
-                            utilisateur=request.user,
-                            adresse_ip=request.META.get('REMOTE_ADDR'),
-                        )
-                    except Exception as e:
-                        print(f'[JOURNAL AUDIT] Erreur non bloquante : {e}')
+                        if lot.quantite_disponible == 0:
+                            lot.statut = 'EPUISE'
+                        elif lot.statut == 'EPUISE' and lot.quantite_disponible > 0:
+                            lot.statut = 'DISPONIBLE'
+                        lot.save()
 
-                    ajustements.append({
-                        'medicament':    med.nom_commercial,
-                        'ancienne_qte':  ancienne_qte,
-                        'nouvelle_qte':  nouvelle_qte,
-                        'ecart':         int(ecart),
-                        'justification': ligne.get('justification', ''),
-                    })
+                        try:
+                            from cliniqueApp.rapports.models import JournalAudit
+                            JournalAudit.objects.create(
+                                action='AJUSTEMENT_INVENTAIRE',
+                                entite_concernee=f'Médicament : {med.nom_commercial}',
+                                ancienne_valeur={'quantite': ancienne_qte},
+                                nouvelle_valeur={
+                                    'quantite':      nouvelle_qte,
+                                    'justification': justification,
+                                    'inventaire_id': inv.id,
+                                },
+                                utilisateur=request.user,
+                                adresse_ip=request.META.get('REMOTE_ADDR'),
+                            )
+                        except Exception as e:
+                            print(f'[JOURNAL] {e}')
 
-                # ✅ Clôturer l'inventaire
+                        ajustements.append({
+                            'medicament':    med.nom_commercial,
+                            'ancienne_qte':  ancienne_qte,
+                            'nouvelle_qte':  nouvelle_qte,
+                            'ecart':         int(ecart),
+                            'justification': justification,
+                        })
+
+                # Clôturer
                 inv.statut   = 'CLOTURE'
                 inv.date_fin = timezone.now()
                 inv.save()
 
         except Exception as e:
             import traceback
-            print(f'[INVENTAIRE VALIDER] Erreur : {e}')
             traceback.print_exc()
             return Response(
-                {'error': f'Erreur lors de la validation : {str(e)}'},
+                {'error': f'Erreur : {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

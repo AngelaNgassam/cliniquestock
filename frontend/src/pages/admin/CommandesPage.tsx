@@ -4,12 +4,13 @@ import {
   TableContainer, TableHead, TableRow, Chip, IconButton, Tooltip,
   CircularProgress, Alert, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Select, MenuItem, FormControl,
-  InputLabel, Divider, Collapse, Badge,
+  InputLabel, Divider, Collapse, Badge, Checkbox,
 } from '@mui/material';
 import {
   Add, Send, Cancel, Lock, ExpandMore, ExpandLess,
   Refresh, ShoppingCart, LocalShipping, CheckCircle,
   History, WarningAmber, Lightbulb, PictureAsPdf,
+  Delete, DeleteSweep,
 } from '@mui/icons-material';
 import toast, { Toaster } from 'react-hot-toast';
 import commandeService from '../../services/commandeService';
@@ -18,7 +19,6 @@ import fournisseurService from '../../services/fournisseurService';
 import { medicamentService } from '../../services/medicamentService';
 import api from '../../services/authService';
 
-// ── Statuts ───────────────────────────────────────────────────────────────────
 const STATUT_CONFIG: Record<StatutCommande, {
   label: string; bg: string; color: string; border: string;
 }> = {
@@ -43,31 +43,38 @@ async function chargerSignature(): Promise<{
   try {
     const res  = await api.get('/signature/');
     const data = res.data as any;
-    return data.exists ? data : null;
-  } catch {
+    if (data.exists && data.image_b64) return data;
     return null;
-  }
+  } catch { return null; }
 }
 
 async function ajouterSignaturePDF(
-  doc: any,
-  sig: { nom: string; fonction: string; image_b64: string } | null,
+  doc: any, sig: { nom: string; fonction: string; image_b64: string } | null,
   W: number, H: number,
 ) {
   if (!sig?.image_b64) return;
   const C_BLEU: [number,number,number] = [13, 71, 161];
   const C_GRIS: [number,number,number] = [96, 96, 96];
-  const sigX = W - 75;
-  const sigY = H - 42;
+  const sigX = W - 80; const sigY = H - 46;
+
+  doc.setFillColor(245, 248, 255);
+  doc.roundedRect(sigX - 4, sigY - 4, 72, 32, 2, 2, 'F');
   doc.setDrawColor(200, 215, 240); doc.setLineWidth(0.3);
-  doc.rect(sigX - 4, sigY - 2, 70, 28, 'S');
-  try { doc.addImage(sig.image_b64, 'PNG', sigX, sigY, 62, 14); } catch { /* ignore */ }
-  doc.setLineWidth(0.5); doc.setDrawColor(...C_GRIS);
-  doc.line(sigX, sigY + 16, sigX + 62, sigY + 16);
+  doc.roundedRect(sigX - 4, sigY - 4, 72, 32, 2, 2, 'S');
+
+  try {
+    doc.addImage(sig.image_b64, 'PNG', sigX, sigY, 64, 16);
+  } catch (e) {
+    console.warn('[PDF] Image signature non ajoutée :', e);
+  }
+
+  doc.setDrawColor(...C_GRIS); doc.setLineWidth(0.4);
+  doc.line(sigX, sigY + 18, sigX + 64, sigY + 18);
+
   doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
-  doc.text(sig.nom, sigX + 31, sigY + 20, { align: 'center' });
+  doc.text(sig.nom, sigX + 32, sigY + 22, { align: 'center' });
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...C_GRIS);
-  doc.text(sig.fonction, sigX + 31, sigY + 24, { align: 'center' });
+  doc.text(sig.fonction, sigX + 32, sigY + 26, { align: 'center' });
   doc.setTextColor(0, 0, 0);
 }
 
@@ -85,9 +92,8 @@ async function exporterCommandePDF(commande: Commande) {
   const C_BLEU : [number,number,number] = [13, 71, 161];
   const C_BLEU2: [number,number,number] = [21, 101, 192];
   const C_GRIS : [number,number,number] = [96, 96, 96];
-  const C_VERT : [number,number,number] = [46, 125, 50];
 
-  // ── En-tête ────────────────────────────────────────────────────────────────
+  // En-tête
   doc.setFillColor(...C_BLEU);
   doc.rect(0, 0, W, 16, 'F');
   doc.setTextColor(255, 255, 255);
@@ -95,133 +101,117 @@ async function exporterCommandePDF(commande: Commande) {
   doc.text('CliniqueStock', 14, 11);
   doc.setFontSize(8); doc.setFont('helvetica', 'normal');
   doc.text('Bon de Commande', W / 2, 11, { align: 'center' });
-  doc.text(`${dateStr} à ${heureStr}`, W - 14, 11, { align: 'right' });
+  doc.text(`${dateStr} ${heureStr}`, W - 14, 11, { align: 'right' });
 
-  // ── Titre ──────────────────────────────────────────────────────────────────
+  // Titre
   doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
   doc.text('BON DE COMMANDE', W / 2, 30, { align: 'center' });
-  doc.setFontSize(11); doc.setFont('helvetica', 'normal'); doc.setTextColor(...C_GRIS);
-  doc.text(commande.reference, W / 2, 37, { align: 'center' });
+  doc.setFontSize(12); doc.setFont('helvetica', 'normal'); doc.setTextColor(...C_GRIS);
+  doc.text(commande.reference, W / 2, 38, { align: 'center' });
 
-  // ── Statut badge ───────────────────────────────────────────────────────────
-  const sc = STATUT_CONFIG[commande.statut];
-  doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-  doc.setTextColor(sc.color as unknown as string);
-  doc.text(`Statut : ${sc.label}`, W / 2, 44, { align: 'center' });
-
-  // ── Info commande ──────────────────────────────────────────────────────────
-  let y = 52;
+  // Info commande
+  let y = 48;
   doc.setFillColor(240, 247, 255);
-  doc.roundedRect(14, y, W - 28, 28, 2, 2, 'F');
+  doc.roundedRect(14, y, W - 28, 30, 2, 2, 'F');
   doc.setDrawColor(...C_BLEU2); doc.setLineWidth(0.3);
-  doc.roundedRect(14, y, W - 28, 28, 2, 2, 'S');
-
+  doc.roundedRect(14, y, W - 28, 30, 2, 2, 'S');
   doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
-  doc.text('Informations de la commande', 20, y + 6);
-  doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33); doc.setFontSize(8);
+  doc.text('Informations de la commande', 20, y + 7);
 
   const infos = [
-    ['Référence',         commande.reference],
-    ['Fournisseur',       commande.fournisseur_nom || '—'],
-    ['Date de création',  new Date(commande.date_creation).toLocaleDateString('fr-FR')],
-    ['Livraison prévue',  commande.date_livraison_prevue
+    ['Référence',       commande.reference],
+    ['Fournisseur',     commande.fournisseur_nom || '—'],
+    ['Date',            new Date(commande.date_creation).toLocaleDateString('fr-FR')],
+    ['Livraison',       commande.date_livraison_prevue
       ? new Date(commande.date_livraison_prevue).toLocaleDateString('fr-FR') : '—'],
-    ['Montant total',     `${Number(commande.montant_total).toLocaleString('fr-FR')} FCFA`],
+    ['Montant total',   `${Number(commande.montant_total).toLocaleString('fr-FR')} FCFA`],
+    ['Statut',          STATUT_CONFIG[commande.statut].label],
   ];
 
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
   infos.forEach(([label, value], i) => {
     const col = i % 2 === 0 ? 20 : W / 2 + 5;
-    const row = y + 13 + Math.floor(i / 2) * 7;
+    const row = y + 14 + Math.floor(i / 2) * 7;
     doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
     doc.text(`${label} :`, col, row);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33);
-    doc.text(value, col + 30, row);
+    doc.text(value, col + 28, row);
   });
 
-  // ── Lignes de commande ─────────────────────────────────────────────────────
-  y = 86;
+  // Lignes commande
+  y = 85;
   doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
-  doc.text('Détail des articles commandés', 14, y); y += 6;
+  doc.text('Détail des articles', 14, y); y += 6;
 
-  const COLS_CMD = [
-    { label: 'Médicament',     x: 14, w: 60 },
-    { label: 'DCI',            x: 76, w: 30 },
-    { label: 'Qté cmdée',      x: 108, w: 18 },
-    { label: 'Qté reçue',      x: 128, w: 18 },
-    { label: 'Prix unitaire',  x: 148, w: 25 },
-    { label: 'Total (FCFA)',   x: 175, w: 25 },
+  const COLS = [
+    { label: 'Médicament',    x: 14  },
+    { label: 'Qté commandée', x: 90  },
+    { label: 'Qté reçue',     x: 118 },
+    { label: 'Prix unitaire', x: 143 },
+    { label: 'Total (FCFA)',  x: 170 },
   ];
 
-  // En-tête tableau
   doc.setFillColor(...C_BLEU2);
-  doc.rect(12, y - 5, W - 24, 7, 'F');
+  doc.rect(12, y - 5.5, W - 24, 7, 'F');
   doc.setTextColor(255, 255, 255); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-  COLS_CMD.forEach(c => doc.text(c.label, c.x, y));
+  COLS.forEach(c => doc.text(c.label, c.x, y));
   doc.setTextColor(0, 0, 0);
   y += 5;
 
-  // Lignes
-  const ROW_H = 8;
   commande.lignes.forEach((ligne, idx) => {
-    if (y + ROW_H > H - 50) {
-      doc.addPage();
-      y = 20;
-    }
+    if (y + 8 > H - 55) { doc.addPage(); y = 20; }
     doc.setFillColor(idx % 2 === 0 ? 248 : 255, idx % 2 === 0 ? 251 : 255, 255);
-    doc.rect(12, y - 5, W - 24, ROW_H, 'F');
+    doc.rect(12, y - 5.5, W - 24, 8, 'F');
     doc.setFontSize(7); doc.setFont('helvetica', 'normal');
 
-    const truncate = (s: string, max: number) =>
-      s && s.length > max ? s.slice(0, max - 1) + '…' : (s || '—');
-    const total = ligne.quantite_commandee * Number(ligne.prix_unitaire_estime);
-    const qteRecue = ligne.quantite_recue ?? 0;
-    const complet  = qteRecue >= ligne.quantite_commandee;
+    const nom    = ligne.medicament_nom || `Med #${ligne.medicament}`;
+    const total  = ligne.quantite_commandee * Number(ligne.prix_unitaire_estime);
+    const recue  = ligne.quantite_recue ?? 0;
+    const ok     = recue >= ligne.quantite_commandee;
 
     doc.setTextColor(...C_BLEU); doc.setFont('helvetica', 'bold');
-    doc.text(truncate(ligne.medicament_nom || `Med #${ligne.medicament}`, 32), COLS_CMD[0].x, y);
+    doc.text(nom.length > 38 ? nom.slice(0, 37) + '…' : nom, COLS[0].x, y);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33);
-    doc.text(truncate(ligne.medicament_nom || '—', 18), COLS_CMD[1].x, y);
-    doc.text(String(ligne.quantite_commandee), COLS_CMD[2].x, y);
-    doc.setTextColor(complet ? 46 : qteRecue > 0 ? 230 : 100,
-                     complet ? 125 : qteRecue > 0 ? 81  : 100,
-                     complet ? 50  : qteRecue > 0 ? 0   : 100);
+    doc.text(String(ligne.quantite_commandee), COLS[1].x, y);
+    doc.setTextColor(ok ? 46 : recue > 0 ? 230 : 100, ok ? 125 : recue > 0 ? 81 : 100, ok ? 50 : 0);
     doc.setFont('helvetica', 'bold');
-    doc.text(String(qteRecue), COLS_CMD[3].x, y);
+    doc.text(String(recue), COLS[2].x, y);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33);
-    doc.text(`${Number(ligne.prix_unitaire_estime).toLocaleString('fr-FR')}`, COLS_CMD[4].x, y);
-    doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
-    doc.text(`${total.toLocaleString('fr-FR')}`, COLS_CMD[5].x, y);
-    y += ROW_H;
+    doc.text(`${Number(ligne.prix_unitaire_estime).toLocaleString('fr-FR')}`, COLS[3].x, y);
+    doc.setTextColor(...C_BLEU);
+    doc.text(`${total.toLocaleString('fr-FR')}`, COLS[4].x, y);
+    y += 8;
   });
 
-  // ── Total ──────────────────────────────────────────────────────────────────
+  // Total
   y += 4;
+  if (y + 16 > H - 55) { doc.addPage(); y = 20; }
   doc.setFillColor(232, 240, 255);
-  doc.roundedRect(12, y, W - 24, 12, 2, 2, 'F');
+  doc.roundedRect(12, y, W - 24, 14, 2, 2, 'F');
   doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C_BLEU);
-  doc.text('MONTANT TOTAL :', 18, y + 8);
+  doc.text('MONTANT TOTAL :', 18, y + 9);
   doc.setFontSize(12);
-  doc.text(
-    `${Number(commande.montant_total).toLocaleString('fr-FR')} FCFA`,
-    W - 18, y + 8, { align: 'right' }
-  );
-  y += 20;
+  doc.text(`${Number(commande.montant_total).toLocaleString('fr-FR')} FCFA`, W - 18, y + 9, { align: 'right' });
+  y += 18;
 
-  // ── Pied de page ───────────────────────────────────────────────────────────
-  doc.setFillColor(245, 248, 255);
-  doc.rect(0, H - 12, W, 12, 'F');
-  doc.setDrawColor(200, 215, 240); doc.setLineWidth(0.2);
-  doc.line(0, H - 12, W, H - 12);
-  doc.setTextColor(...C_GRIS); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-  doc.text('CliniqueStock — Document confidentiel', 14, H - 4);
-  doc.text('Page 1 / 1', W / 2, H - 4, { align: 'center' });
-  doc.text(dateStr, W - 14, H - 4, { align: 'right' });
+  // Pied de page
+  const totalPg = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPg; p++) {
+    doc.setPage(p);
+    doc.setFillColor(245, 248, 255);
+    doc.rect(0, H - 12, W, 12, 'F');
+    doc.setDrawColor(200, 215, 240); doc.setLineWidth(0.2);
+    doc.line(0, H - 12, W, H - 12);
+    doc.setTextColor(...C_GRIS); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+    doc.text('CliniqueStock — Document confidentiel', 14, H - 4);
+    doc.text(`Page ${p} / ${totalPg}`, W / 2, H - 4, { align: 'center' });
+    doc.text(dateStr, W - 14, H - 4, { align: 'right' });
+  }
 
-  // ── Signature ──────────────────────────────────────────────────────────────
+  // ✅ Signature sur la dernière page
   const sig = await chargerSignature();
   if (sig) {
-    const lastPage = doc.getNumberOfPages();
-    doc.setPage(lastPage);
+    doc.setPage(doc.getNumberOfPages());
     await ajouterSignaturePDF(doc, sig, W, H);
   }
 
@@ -273,7 +263,11 @@ function ReceptionDialog({
         let dernNumLot = '', dernDatePerem = '', dernPrixAchat = l.prix_unitaire_estime;
         for (const rec of receptionsExistantes) {
           const lp = (rec.lignes || []).find((rl: any) => rl.medicament === l.medicament);
-          if (lp) { dernNumLot = lp.numero_lot || ''; dernDatePerem = lp.date_peremption || ''; dernPrixAchat = lp.prix_achat_reel || l.prix_unitaire_estime; }
+          if (lp) {
+            dernNumLot    = lp.numero_lot || '';
+            dernDatePerem = lp.date_peremption || '';
+            dernPrixAchat = lp.prix_achat_reel || l.prix_unitaire_estime;
+          }
         }
         return {
           medicament: l.medicament, medicament_nom: l.medicament_nom || `Médicament #${l.medicament}`,
@@ -287,7 +281,10 @@ function ReceptionDialog({
 
       const sugg: Record<number, any> = {};
       for (const l of commande.lignes) {
-        try { const r = await api.get(`/receptions/numeros_lot/?medicament_id=${l.medicament}`); sugg[l.medicament] = r.data; } catch { /* ignore */ }
+        try {
+          const r = await api.get(`/receptions/numeros_lot/?medicament_id=${l.medicament}`);
+          sugg[l.medicament] = r.data;
+        } catch { /* ignore */ }
       }
       setLotsSuggeres(sugg);
     };
@@ -342,7 +339,6 @@ function ReceptionDialog({
     } catch (err: any) {
       toast.error(
         err.response?.data?.detail ||
-        err.response?.data?.non_field_errors?.[0] ||
         JSON.stringify(err.response?.data) ||
         "Erreur lors de l'enregistrement."
       );
@@ -352,8 +348,6 @@ function ReceptionDialog({
   const restantTotal = lignes.reduce(
     (sum, l) => sum + Math.max(0, l.quantite_commandee - l.quantite_deja_recue), 0
   );
-  const fmtDate = (d: string) =>
-    d ? new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth
@@ -369,23 +363,16 @@ function ReceptionDialog({
             <Typography fontWeight={800} fontSize={18} color="#1B5E20">
               Enregistrer une réception
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.3 }}>
-              <Typography variant="caption" color="text.secondary">
-                Commande <strong>{commande.reference}</strong> — {commande.fournisseur_nom}
-              </Typography>
-              {commande.statut === 'PARTIELLE' && (
-                <Chip label="Réception complémentaire" size="small"
-                  sx={{ bgcolor: '#FFF8E1', color: '#E65100', fontWeight: 700, fontSize: 10 }} />
-              )}
-            </Box>
+            <Typography variant="caption" color="text.secondary">
+              Commande <strong>{commande.reference}</strong> — {commande.fournisseur_nom}
+            </Typography>
           </Box>
         </Box>
       </DialogTitle>
       <Divider sx={{ mt: 2 }} />
 
       <DialogContent sx={{ pt: 2.5 }}>
-        {/* Historique réceptions précédentes */}
-        {commande.statut === 'PARTIELLE' && (
+        {commande.statut === 'PARTIELLE' && receptions.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
               <History sx={{ color: '#F57F17', fontSize: 18 }} />
@@ -393,33 +380,26 @@ function ReceptionDialog({
                 Réceptions précédentes (lecture seule)
               </Typography>
             </Box>
-            {loadingHist ? (
-              <CircularProgress size={24} />
-            ) : receptions.length === 0 ? (
-              <Typography fontSize={13} color="text.secondary">Aucune réception précédente.</Typography>
-            ) : receptions.map(rec => (
-              <Card key={rec.id} elevation={0} sx={{
-                border: '1px solid #FFE082', borderRadius: 2, bgcolor: '#FFFDE7', mb: 1.5 }}>
+            {receptions.map(rec => (
+              <Card key={rec.id} elevation={0} sx={{ border: '1px solid #FFE082', borderRadius: 2, bgcolor: '#FFFDE7', mb: 1.5 }}>
                 <Box sx={{ px: 2, py: 1, bgcolor: '#FFF8E1', borderBottom: '1px solid #FFE082',
                   display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography fontWeight={700} fontSize={13} color="#E65100">
-                    📦 {rec.numero_bon_livraison}
-                  </Typography>
+                  <Typography fontWeight={700} fontSize={13} color="#E65100">📦 {rec.numero_bon_livraison}</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {fmtDate(rec.date_reception)}
+                    {new Date(rec.date_reception).toLocaleString('fr-FR')}
                   </Typography>
                 </Box>
                 <Table size="small">
                   <TableHead>
-                    <TableRow sx={{ bgcolor: '#FFFDE7' }}>
+                    <TableRow>
                       {['Médicament', 'Qté reçue', 'N° lot', 'Date péremption', 'Anomalie'].map(h => (
                         <TableCell key={h} sx={{ fontSize: 11, fontWeight: 700, color: '#78909C', py: 0.5 }}>{h}</TableCell>
                       ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(rec.lignes || []).map((rl: any, rli: number) => (
-                      <TableRow key={rli}>
+                    {(rec.lignes || []).map((rl: any, i: number) => (
+                      <TableRow key={i}>
                         <TableCell sx={{ fontSize: 12 }}>{rl.medicament_nom}</TableCell>
                         <TableCell sx={{ fontSize: 12 }}>{rl.quantite_recue}</TableCell>
                         <TableCell sx={{ fontSize: 12, fontFamily: 'monospace', color: '#1565C0' }}>{rl.numero_lot || '—'}</TableCell>
@@ -438,25 +418,15 @@ function ReceptionDialog({
                 </Table>
               </Card>
             ))}
-            <Divider sx={{ my: 2.5 }} />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-              <Add sx={{ color: '#1B5E20', fontSize: 18 }} />
-              <Typography fontWeight={700} color="#1B5E20" fontSize={14}>
-                Nouvelle réception complémentaire
-              </Typography>
-            </Box>
+            <Divider sx={{ my: 2 }} />
           </Box>
         )}
 
-        {/* Date réception */}
         <Box sx={{ mb: 3 }}>
           <TextField label="Date de réception *" type="datetime-local"
             value={dateReception} onChange={e => setDateReception(e.target.value)}
             InputLabelProps={{ shrink: true }} size="small"
             sx={{ width: 290, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            Le numéro de bon sera généré automatiquement (format BL-AAAA-NNN)
-          </Typography>
         </Box>
 
         <Typography fontWeight={700} color="#1B5E20" sx={{ mb: 2 }} fontSize={15}>
@@ -467,7 +437,6 @@ function ReceptionDialog({
           const restant    = ligne.quantite_commandee - ligne.quantite_deja_recue;
           const dejaComplet = restant <= 0;
           const suggestion  = lotsSuggeres[ligne.medicament];
-
           return (
             <Card key={i} elevation={0} sx={{
               border: dejaComplet ? '1px solid #C8E6C9' : ligne.has_anomalie ? '1.5px solid #FFCDD2' : '1px solid #E0E0E0',
@@ -489,16 +458,13 @@ function ReceptionDialog({
                       size="small" sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', fontWeight: 600, fontSize: 11 }} />
                   )}
                   <Chip label={dejaComplet ? 'Complet' : `Restant : ${restant}`} size="small"
-                    sx={{ bgcolor: dejaComplet ? '#C8E6C9' : '#E3F2FD',
-                      color: dejaComplet ? '#2E7D32' : '#1565C0', fontWeight: 600, fontSize: 11 }} />
+                    sx={{ bgcolor: dejaComplet ? '#C8E6C9' : '#E3F2FD', color: dejaComplet ? '#2E7D32' : '#1565C0', fontWeight: 600, fontSize: 11 }} />
                 </Box>
               </Box>
 
               {dejaComplet ? (
                 <Box sx={{ px: 2, py: 1 }}>
-                  <Typography variant="caption" color="#2E7D32">
-                    Ce médicament a déjà été entièrement réceptionné.
-                  </Typography>
+                  <Typography variant="caption" color="#2E7D32">Ce médicament a déjà été entièrement réceptionné.</Typography>
                 </Box>
               ) : (
                 <Box sx={{ p: 2 }}>
@@ -510,12 +476,11 @@ function ReceptionDialog({
                       error={ligne.quantite_recue > restant}
                       helperText={ligne.quantite_recue > restant ? `Maximum : ${restant}` : ''}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
-
                     <Box>
                       <TextField label="N° lot *" value={ligne.numero_lot}
                         onChange={e => updateLigne(i, 'numero_lot', e.target.value)}
                         size="small" fullWidth placeholder={suggestion?.prochain || 'ex: LOT-2026A'}
-                        helperText={ligne.numero_lot && !ligne.lot_modifie ? '📋 Pré-rempli depuis réception précédente' : ''}
+                        helperText={ligne.numero_lot && !ligne.lot_modifie ? '📋 Pré-rempli' : ''}
                         FormHelperTextProps={{ sx: { color: '#F57F17', fontSize: 10 } }}
                         sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
                       {suggestion?.prochain && (
@@ -528,32 +493,28 @@ function ReceptionDialog({
                         </Tooltip>
                       )}
                     </Box>
-
                     <TextField label="Date péremption *" type="date"
                       value={ligne.date_peremption}
                       onChange={e => updateLigne(i, 'date_peremption', e.target.value)}
                       InputLabelProps={{ shrink: true }} size="small"
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
-
                     <TextField label="Prix achat réel (FCFA) *" type="number"
                       value={ligne.prix_achat_reel}
                       onChange={e => updateLigne(i, 'prix_achat_reel', e.target.value)}
                       size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Button size="small"
-                      variant={ligne.has_anomalie ? 'contained' : 'outlined'}
-                      color={ligne.has_anomalie ? 'error' : 'inherit'}
-                      startIcon={<WarningAmber fontSize="small" />}
-                      onClick={() => {
-                        updateLigne(i, 'has_anomalie', !ligne.has_anomalie);
-                        if (ligne.has_anomalie) updateLigne(i, 'type_anomalie', '');
-                      }}
-                      sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: 12 }}>
-                      {ligne.has_anomalie ? 'Anomalie signalée' : 'Signaler une anomalie'}
-                    </Button>
-                  </Box>
+                  <Button size="small"
+                    variant={ligne.has_anomalie ? 'contained' : 'outlined'}
+                    color={ligne.has_anomalie ? 'error' : 'inherit'}
+                    startIcon={<WarningAmber fontSize="small" />}
+                    onClick={() => {
+                      updateLigne(i, 'has_anomalie', !ligne.has_anomalie);
+                      if (ligne.has_anomalie) updateLigne(i, 'type_anomalie', '');
+                    }}
+                    sx={{ borderRadius: 1.5, textTransform: 'none', fontSize: 12 }}>
+                    {ligne.has_anomalie ? 'Anomalie signalée' : 'Signaler une anomalie'}
+                  </Button>
 
                   {ligne.has_anomalie && (
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 1.5, mt: 1.5 }}>
@@ -567,10 +528,9 @@ function ReceptionDialog({
                           ))}
                         </Select>
                       </FormControl>
-                      <TextField label="Description de l'anomalie" size="small"
+                      <TextField label="Description" size="small"
                         value={ligne.description_anomalie}
                         onChange={e => updateLigne(i, 'description_anomalie', e.target.value)}
-                        placeholder="Décrivez l'anomalie observée..."
                         sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }} />
                     </Box>
                   )}
@@ -579,22 +539,6 @@ function ReceptionDialog({
             </Card>
           );
         })}
-
-        <Card elevation={0} sx={{ bgcolor: '#F3E5F5', border: '1px solid #CE93D8', borderRadius: 2, p: 1.5, mt: 1 }}>
-          <Typography variant="caption" color="#6A1B9A" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
-            ℹ️ Règles de traitement automatique des anomalies
-          </Typography>
-          {[
-            ['Produit non conforme', 'Non intégré au stock'],
-            ['Médicament endommagé', 'Stock quarantaine'],
-            ['Péremption < 6 mois',  'Alerte déclenchée'],
-            ['Quantité manquante',   'Commande → Partielle'],
-          ].map(([type, effet]) => (
-            <Typography key={type} variant="caption" color="#4A148C" display="block">
-              • <strong>{type}</strong> → {effet}
-            </Typography>
-          ))}
-        </Card>
       </DialogContent>
 
       <Divider />
@@ -616,9 +560,14 @@ function ReceptionDialog({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CommandeRow
+// CommandeRow — avec suppression + PDF
 // ─────────────────────────────────────────────────────────────────────────────
-function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: () => void }) {
+function CommandeRow({
+  commande, onRefresh, selection, onToggleSelect,
+}: {
+  commande: Commande; onRefresh: () => void;
+  selection: number[]; onToggleSelect: (id: number) => void;
+}) {
   const [open,          setOpen]          = useState(false);
   const [loading,       setLoading]       = useState(false);
   const [receptionOpen, setReceptionOpen] = useState(false);
@@ -633,22 +582,45 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
       toast.success('Action effectuée !');
       onRefresh();
     } catch (err: any) {
-      toast.error(err.response?.data?.error || "Erreur.");
+      toast.error(err.response?.data?.error || 'Erreur.');
+    } finally { setLoading(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Supprimer définitivement la commande ${commande.reference} ?`)) return;
+    setLoading(true);
+    try {
+      await commandeService.supprimer(commande.id);
+      toast.success('Commande supprimée.');
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Erreur.');
     } finally { setLoading(false); }
   };
 
   const handleExportPDF = async () => {
     setPdfLoading(true);
-    try {
-      await exporterCommandePDF(commande);
-    } catch {
-      toast.error('Erreur lors de la génération du PDF.');
-    } finally { setPdfLoading(false); }
+    try { await exporterCommandePDF(commande); }
+    catch { toast.error('Erreur PDF.'); }
+    finally { setPdfLoading(false); }
   };
+
+  const estSelectionnable = ['LIVREE', 'ANNULEE'].includes(commande.statut);
 
   return (
     <>
       <TableRow hover sx={{ '&:hover': { bgcolor: '#F8FBFF' }, borderLeft: `3px solid ${sc.border}` }}>
+        {/* Checkbox sélection */}
+        <TableCell padding="checkbox">
+          {estSelectionnable && (
+            <Checkbox
+              size="small"
+              checked={selection.includes(commande.id)}
+              onChange={() => onToggleSelect(commande.id)}
+            />
+          )}
+        </TableCell>
+
         <TableCell>
           <Typography fontWeight={700} fontSize={14} color="#0D47A1">{commande.reference}</Typography>
           <Typography variant="caption" color="text.secondary">
@@ -674,23 +646,22 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
             sx={{ bgcolor: sc.bg, color: sc.color, fontWeight: 700, border: `1px solid ${sc.border}` }} />
         </TableCell>
         <TableCell>
-          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
             <Tooltip title={open ? 'Masquer' : 'Voir les lignes'}>
               <IconButton size="small" sx={{ color: '#2196F3' }} onClick={() => setOpen(!open)}>
                 {open ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
               </IconButton>
             </Tooltip>
 
-            {/* ✅ Bouton PDF */}
-            <Tooltip title="Télécharger le PDF">
+            {/* PDF */}
+            <Tooltip title="Télécharger PDF">
               <IconButton size="small" sx={{ color: '#C62828' }}
                 onClick={handleExportPDF} disabled={pdfLoading}>
-                {pdfLoading
-                  ? <CircularProgress size={14} />
-                  : <PictureAsPdf fontSize="small" />}
+                {pdfLoading ? <CircularProgress size={14} /> : <PictureAsPdf fontSize="small" />}
               </IconButton>
             </Tooltip>
 
+            {/* Envoyer */}
             {['BROUILLON', 'EN_ATTENTE'].includes(commande.statut) && commande.modifiable && (
               <Tooltip title="Envoyer au fournisseur">
                 <IconButton size="small" sx={{ color: '#4CAF50' }} disabled={loading}
@@ -701,6 +672,7 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
               </Tooltip>
             )}
 
+            {/* Réception */}
             {['EN_ATTENTE', 'PARTIELLE'].includes(commande.statut) && (
               <Tooltip title={commande.statut === 'PARTIELLE' ? 'Réception complémentaire' : 'Enregistrer réception'}>
                 <IconButton size="small" disabled={loading} onClick={() => setReceptionOpen(true)}
@@ -712,8 +684,9 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
               </Tooltip>
             )}
 
+            {/* Annuler */}
             {!['LIVREE', 'ANNULEE'].includes(commande.statut) && (
-              <Tooltip title="Annuler">
+              <Tooltip title="Annuler la commande">
                 <IconButton size="small" sx={{ color: '#F44336' }} disabled={loading}
                   onClick={() => handleAction(() => commandeService.annuler(commande.id),
                     `Annuler ${commande.reference} ? Irréversible.`)}>
@@ -722,12 +695,23 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
               </Tooltip>
             )}
 
+            {/* Clôturer */}
             {['LIVREE', 'PARTIELLE'].includes(commande.statut) && (
               <Tooltip title="Clôturer">
                 <IconButton size="small" sx={{ color: '#9C27B0' }} disabled={loading}
                   onClick={() => handleAction(() => commandeService.cloture(commande.id),
                     `Clôturer ${commande.reference} ?`)}>
                   <Lock fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {/* ✅ Supprimer (LIVREE ou ANNULEE seulement) */}
+            {['LIVREE', 'ANNULEE'].includes(commande.statut) && (
+              <Tooltip title="Supprimer définitivement">
+                <IconButton size="small" sx={{ color: '#F44336' }} disabled={loading}
+                  onClick={handleDelete}>
+                  <Delete fontSize="small" />
                 </IconButton>
               </Tooltip>
             )}
@@ -743,12 +727,9 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
 
       {/* Détail lignes */}
       <TableRow>
-        <TableCell colSpan={6} sx={{ py: 0, border: 0 }}>
+        <TableCell colSpan={7} sx={{ py: 0, border: 0 }}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ mx: 2, my: 1.5, bgcolor: '#F8FBFF', borderRadius: 2, p: 2, border: '1px solid #E3F2FD' }}>
-              <Typography fontWeight={700} color="#0D47A1" sx={{ mb: 1.5 }} fontSize={13}>
-                Lignes de commande
-              </Typography>
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#EEF4FF' }}>
@@ -778,11 +759,7 @@ function CommandeRow({ commande, onRefresh }: { commande: Commande; onRefresh: (
                             {complet && <CheckCircle sx={{ fontSize: 14, color: '#2E7D32' }} />}
                           </Box>
                         </TableCell>
-                        <TableCell>
-                          <Typography fontSize={13}>
-                            {Number(ligne.prix_unitaire_estime).toLocaleString()} FCFA
-                          </Typography>
-                        </TableCell>
+                        <TableCell><Typography fontSize={13}>{Number(ligne.prix_unitaire_estime).toLocaleString()} FCFA</Typography></TableCell>
                         <TableCell>
                           <Typography fontSize={13} fontWeight={700} color="#1565C0">
                             {(ligne.quantite_commandee * Number(ligne.prix_unitaire_estime)).toLocaleString()} FCFA
@@ -929,8 +906,6 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
             <TextField label="Prix unitaire (FCFA) *" type="number" value={ligne.prix_unitaire_estime}
               onChange={e => updateLigne(i, 'prix_unitaire_estime', e.target.value)}
-              helperText={ligne.medicament && ligne.prix_unitaire_estime ? '✓ auto-rempli' : ' '}
-              FormHelperTextProps={{ sx: { color: '#43A047', fontSize: 10 } }}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
             <Button size="small" color="error" onClick={() => removeLigne(i)}
               disabled={lignes.length === 1} sx={{ mt: 1 }}>✕</Button>
@@ -962,8 +937,7 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
         <Button onClick={() => handleSubmit('envoyer')} variant="contained" disabled={loading}
           startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <Send />}
           sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
-            background: 'linear-gradient(135deg, #2196F3, #1565C0)',
-            boxShadow: '0 4px 12px rgba(33,150,243,0.35)' }}>
+            background: 'linear-gradient(135deg, #2196F3, #1565C0)' }}>
           {loading ? 'Envoi...' : 'Valider et envoyer'}
         </Button>
       </DialogActions>
@@ -980,6 +954,8 @@ export default function CommandesPage() {
   const [error,        setError]        = useState('');
   const [filterStatut, setFilterStatut] = useState<string>('tous');
   const [dialogOpen,   setDialogOpen]   = useState(false);
+  const [selection,    setSelection]    = useState<number[]>([]);
+  const [suppLoading,  setSuppLoading]  = useState(false);
 
   const fetchCommandes = useCallback(async () => {
     setLoading(true); setError('');
@@ -987,11 +963,8 @@ export default function CommandesPage() {
       const res  = await commandeService.getAll();
       const data = res.data as any;
       setCommandes(Array.isArray(data) ? data : data.results ?? []);
-    } catch {
-      setError('Erreur lors du chargement des commandes.');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Erreur lors du chargement des commandes.'); }
+    finally   { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchCommandes(); }, [fetchCommandes]);
@@ -1008,10 +981,37 @@ export default function CommandesPage() {
     montant:    commandes.reduce((s, c) => s + Number(c.montant_total), 0),
   };
 
+  const handleToggleSelect = (id: number) => {
+    setSelection(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSupprimerSelection = async () => {
+    if (selection.length === 0) return;
+    if (!confirm(`Supprimer définitivement ${selection.length} commande(s) ?`)) return;
+    setSuppLoading(true);
+    try {
+      // Supprimer une par une (ou utiliser l'endpoint groupé)
+      await Promise.all(selection.map(id => commandeService.supprimer(id)));
+      toast.success(`${selection.length} commande(s) supprimée(s).`);
+      setSelection([]);
+      fetchCommandes();
+    } catch (e: any) {
+      toast.error('Erreur lors de la suppression groupée.');
+    } finally { setSuppLoading(false); }
+  };
+
+  // Sélectionner toutes les commandes éligibles de la vue filtrée
+  const selectableIds = commandesFiltrees
+    .filter(c => ['LIVREE', 'ANNULEE'].includes(c.statut))
+    .map(c => c.id);
+  const tousSelectionnes = selectableIds.length > 0 &&
+    selectableIds.every(id => selection.includes(id));
+
   return (
     <Box>
-      <Toaster position="top-right"
-        toastOptions={{ style: { borderRadius: '10px', fontFamily: 'inherit' } }} />
+      <Toaster position="top-right" toastOptions={{ style: { borderRadius: '10px' } }} />
 
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
@@ -1024,18 +1024,25 @@ export default function CommandesPage() {
             Créez et suivez vos bons de commande fournisseurs.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/*  Bouton suppression multiple */}
+          {selection.length > 0 && (
+            <Button variant="contained" color="error"
+              startIcon={suppLoading ? <CircularProgress size={16} color="inherit" /> : <DeleteSweep />}
+              onClick={handleSupprimerSelection} disabled={suppLoading}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
+              Supprimer ({selection.length})
+            </Button>
+          )}
           <Tooltip title="Actualiser">
             <IconButton onClick={fetchCommandes}
               sx={{ color: '#2196F3', border: '1px solid #E3F2FD' }}>
               <Refresh />
             </IconButton>
           </Tooltip>
-          <Button variant="contained" startIcon={<Add />}
-            onClick={() => setDialogOpen(true)}
+          <Button variant="contained" startIcon={<Add />} onClick={() => setDialogOpen(true)}
             sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700,
-              background: 'linear-gradient(135deg, #2196F3, #1565C0)',
-              boxShadow: '0 4px 15px rgba(33,150,243,0.3)', px: 2.5 }}>
+              background: 'linear-gradient(135deg, #2196F3, #1565C0)', px: 2.5 }}>
             Nouveau bon de commande
           </Button>
         </Box>
@@ -1050,14 +1057,12 @@ export default function CommandesPage() {
           { label: 'Livrées',         value: kpis.livrees,    color: '#2E7D32', bg: '#E8F5E9' },
         ].map(({ label, value, color, bg }) => (
           <Card key={label} elevation={0} sx={{ p: 2.5, border: '1px solid', borderColor: bg,
-            borderRadius: 3, flex: 1, minWidth: 130,
-            background: `linear-gradient(135deg, white, ${bg}22)` }}>
+            borderRadius: 3, flex: 1, minWidth: 130, background: `linear-gradient(135deg, white, ${bg}22)` }}>
             <Typography variant="body2" color="text.secondary" fontWeight={500}>{label}</Typography>
             <Typography variant="h4" fontWeight={900} color={color} sx={{ my: 0.5 }}>{value}</Typography>
           </Card>
         ))}
-        <Card elevation={0} sx={{ p: 2.5, border: '1px solid #E3F2FD', borderRadius: 3,
-          flex: 2, minWidth: 200, background: 'linear-gradient(135deg, white, #E3F2FD22)' }}>
+        <Card elevation={0} sx={{ p: 2.5, border: '1px solid #E3F2FD', borderRadius: 3, flex: 2, minWidth: 200 }}>
           <Typography variant="body2" color="text.secondary" fontWeight={500}>Volume total</Typography>
           <Typography variant="h5" fontWeight={900} color="#1565C0" sx={{ my: 0.5 }}>
             {kpis.montant.toLocaleString()} FCFA
@@ -1078,18 +1083,22 @@ export default function CommandesPage() {
             { value: 'LIVREE',     label: 'Livrée',     count: kpis.livrees },
             { value: 'ANNULEE',    label: 'Annulée',    count: commandes.filter(c => c.statut === 'ANNULEE').length },
           ].map(({ value, label, count }) => (
-            <Chip key={value}
-              label={`${label}${count > 0 ? ` (${count})` : ''}`}
-              onClick={() => setFilterStatut(value)}
-              sx={{
-                cursor:     'pointer',
-                fontWeight: filterStatut === value ? 700 : 400,
-                bgcolor:    filterStatut === value ? '#1565C0' : '#F5F5F5',
-                color:      filterStatut === value ? 'white'   : '#546E7A',
-              }} />
+            <Chip key={value} label={`${label}${count > 0 ? ` (${count})` : ''}`}
+              onClick={() => { setFilterStatut(value); setSelection([]); }}
+              sx={{ cursor: 'pointer', fontWeight: filterStatut === value ? 700 : 400,
+                bgcolor: filterStatut === value ? '#1565C0' : '#F5F5F5',
+                color:   filterStatut === value ? 'white'   : '#546E7A' }} />
           ))}
         </Box>
       </Card>
+
+      {/* Info sélection */}
+      {selectableIds.length > 0 && (
+        <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+          Les commandes <strong>Livrées</strong> et <strong>Annulées</strong> peuvent être sélectionnées et supprimées.
+          {selection.length > 0 && ` — ${selection.length} sélectionnée(s).`}
+        </Alert>
+      )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -1099,6 +1108,16 @@ export default function CommandesPage() {
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F0F7FF' }}>
+                {/* Checkbox "tout sélectionner" */}
+                <TableCell padding="checkbox">
+                  {selectableIds.length > 0 && (
+                    <Checkbox size="small"
+                      checked={tousSelectionnes}
+                      indeterminate={selection.length > 0 && !tousSelectionnes}
+                      onChange={e => setSelection(e.target.checked ? selectableIds : [])}
+                    />
+                  )}
+                </TableCell>
                 {['Référence', 'Fournisseur', 'Livraison prévue', 'Montant', 'Statut', 'Actions'].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700, color: '#455A64', fontSize: 12,
                     py: 1.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -1110,31 +1129,29 @@ export default function CommandesPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
                     <CircularProgress size={36} />
                     <Typography color="text.secondary" sx={{ mt: 1.5 }}>Chargement...</Typography>
                   </TableCell>
                 </TableRow>
               ) : commandesFiltrees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
                     <ShoppingCart sx={{ fontSize: 48, color: '#B0BEC5', mb: 1 }} />
                     <Typography color="text.secondary">Aucune commande trouvée.</Typography>
                   </TableCell>
                 </TableRow>
               ) : commandesFiltrees.map(commande => (
-                <CommandeRow key={commande.id} commande={commande} onRefresh={fetchCommandes} />
+                <CommandeRow key={commande.id} commande={commande} onRefresh={fetchCommandes}
+                  selection={selection} onToggleSelect={handleToggleSelect} />
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       </Card>
 
-      <NouvelleCommandeDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onCreated={fetchCommandes}
-      />
+      <NouvelleCommandeDialog open={dialogOpen}
+        onClose={() => setDialogOpen(false)} onCreated={fetchCommandes} />
     </Box>
   );
 }

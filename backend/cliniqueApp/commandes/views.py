@@ -68,6 +68,13 @@ class CommandeViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         commande = self.get_object()
+
+        # ✅ Autoriser la suppression des commandes livrées et annulées
+        if commande.statut in ['LIVREE', 'ANNULEE']:
+            commande.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # Pour les autres statuts, respecter la règle des 24h
         if timezone.now() >= commande.date_creation + timedelta(hours=24):
             return Response(
                 {'error': 'Suppression impossible après 24h.'},
@@ -75,7 +82,7 @@ class CommandeViewSet(viewsets.ModelViewSet):
             )
         if commande.statut not in [Commande.Statut.BROUILLON, Commande.Statut.EN_ATTENTE]:
             return Response(
-                {'error': 'Seules les commandes en brouillon ou en attente peuvent être supprimées.'},
+                {'error': 'Seules les commandes livrées, annulées, en brouillon ou en attente peuvent être supprimées.'},
                 status=status.HTTP_403_FORBIDDEN
             )
         commande.delete()
@@ -133,6 +140,25 @@ class CommandeViewSet(viewsets.ModelViewSet):
             'message': f'Commande {commande.reference} clôturée.',
             'statut':  commande.statut,
         })
+        
+        
+    @action(detail=False, methods=['delete'], url_path='supprimer_plusieurs')
+    def supprimer_plusieurs(self, request):
+        """DELETE /commandes/supprimer_plusieurs/ — suppression groupée"""
+        ids = request.data.get('ids', [])
+        if not ids:
+            return Response({'error': 'Aucun ID fourni.'}, status=400)
+
+        commandes = Commande.objects.filter(
+            id__in=ids,
+            statut__in=['LIVREE', 'ANNULEE'],
+        )
+        count = commandes.count()
+        commandes.delete()
+        return Response({'message': f'{count} commande(s) supprimée(s).'})
+    
+    
+        
 
     # =========================================================================
     # Utilitaires Infobip
