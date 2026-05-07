@@ -33,12 +33,19 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_401_UNAUTHORIZED)
+
         user = serializer.validated_data['user']
+
+        #  Mettre à jour la dernière connexion
+        from django.utils import timezone as tz
+        user.dernier_connexion = tz.now()
+        user.save(update_fields=['dernier_connexion'])
+
         refresh = RefreshToken.for_user(user)
         return Response({
-            "access":  str(refresh.access_token),
-            "refresh": str(refresh),
-            "role":    user.role,
+            'access':  str(refresh.access_token),
+            'refresh': str(refresh),
+            'role':    user.role,
         })
 
 

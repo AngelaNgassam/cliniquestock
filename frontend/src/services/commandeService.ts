@@ -47,6 +47,8 @@ const commandeService = {
   annuler:      (id: number)               => api.patch(`/commandes/${id}/annuler/`),
   cloture:      (id: number)               => api.patch(`/commandes/${id}/cloture/`),
   supprimer:    (id: number)               => api.delete(`/commandes/${id}/`),
+  supprimerPlusieurs: (ids: number[]) =>
+  api.delete('/commandes/supprimer_plusieurs/', { data: { ids } }),
 };
 
 export default commandeService;
