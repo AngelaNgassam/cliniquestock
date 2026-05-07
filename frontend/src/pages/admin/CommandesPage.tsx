@@ -434,7 +434,7 @@ function ReceptionDialog({
         </Typography>
 
         {lignes.map((ligne, i) => {
-          const restant     = ligne.quantite_commandee - ligne.quantite_deja_recue;
+          const restant    = ligne.quantite_commandee - ligne.quantite_deja_recue;
           const dejaComplet = restant <= 0;
           const suggestion  = lotsSuggeres[ligne.medicament];
           return (
@@ -627,7 +627,9 @@ function CommandeRow({
             {new Date(commande.date_creation).toLocaleDateString('fr-FR')}
           </Typography>
         </TableCell>
-        <TableCell><Typography fontSize={13} fontWeight={500}>{commande.fournisseur_nom}</Typography></TableCell>
+        <TableCell>
+          <Typography fontSize={13} fontWeight={500}>{commande.fournisseur_nom}</Typography>
+        </TableCell>
         <TableCell>
           <Typography fontSize={13}>
             {commande.date_livraison_prevue
@@ -742,9 +744,11 @@ function CommandeRow({
                     const complet  = qteRecue >= ligne.quantite_commandee;
                     return (
                       <TableRow key={i}>
-                        <TableCell><Typography fontSize={13} fontWeight={600}>
-                          {ligne.medicament_nom || `Médicament #${ligne.medicament}`}
-                        </Typography></TableCell>
+                        <TableCell>
+                          <Typography fontSize={13} fontWeight={600}>
+                            {ligne.medicament_nom || `Médicament #${ligne.medicament}`}
+                          </Typography>
+                        </TableCell>
                         <TableCell><Typography fontSize={13}>{ligne.quantite_commandee}</Typography></TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -850,7 +854,8 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
+      PaperProps={{ sx: { borderRadius: 3 } }}>
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{ width: 40, height: 40, borderRadius: 2,
@@ -858,7 +863,9 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
             display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ShoppingCart sx={{ color: 'white', fontSize: 20 }} />
           </Box>
-          <Typography fontWeight={800} color="#0D47A1" fontSize={18}>Nouveau bon de commande</Typography>
+          <Typography fontWeight={800} color="#0D47A1" fontSize={18}>
+            Nouveau bon de commande
+          </Typography>
         </Box>
       </DialogTitle>
       <Divider />
@@ -881,11 +888,13 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
         <Divider sx={{ mb: 2 }} />
         <Typography fontWeight={700} color="#0D47A1" sx={{ mb: 2 }}>Lignes de commande</Typography>
         {lignes.map((ligne, i) => (
-          <Box key={i} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 1.5, mb: 1.5, alignItems: 'flex-start' }}>
+          <Box key={i} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto',
+            gap: 1.5, mb: 1.5, alignItems: 'flex-start' }}>
             <FormControl>
               <InputLabel>Médicament *</InputLabel>
               <Select value={ligne.medicament} label="Médicament *"
-                onChange={e => updateLigne(i, 'medicament', e.target.value)} sx={{ borderRadius: 2 }}>
+                onChange={e => updateLigne(i, 'medicament', e.target.value)}
+                sx={{ borderRadius: 2 }}>
                 {medicaments.filter(m => m.est_actif).map(m => (
                   <MenuItem key={m.id} value={m.id}>{m.nom_commercial}</MenuItem>
                 ))}
@@ -893,7 +902,8 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
             </FormControl>
             <TextField label="Quantité *" type="number" value={ligne.quantite_commandee}
               onChange={e => updateLigne(i, 'quantite_commandee', Number(e.target.value))}
-              inputProps={{ min: 1 }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+              inputProps={{ min: 1 }}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
             <TextField label="Prix unitaire (FCFA) *" type="number" value={ligne.prix_unitaire_estime}
               onChange={e => updateLigne(i, 'prix_unitaire_estime', e.target.value)}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
@@ -909,12 +919,17 @@ function NouvelleCommandeDialog({ open, onClose, onCreated }: {
           background: 'linear-gradient(135deg, #E3F2FD, #BBDEFB)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography fontWeight={700} color="#0D47A1" fontSize={15}>Total estimé</Typography>
-          <Typography variant="h5" fontWeight={900} color="#1565C0">{total.toLocaleString()} FCFA</Typography>
+          <Typography variant="h5" fontWeight={900} color="#1565C0">
+            {total.toLocaleString()} FCFA
+          </Typography>
         </Box>
       </DialogContent>
       <Divider />
       <DialogActions sx={{ p: 2.5, gap: 1 }}>
-        <Button onClick={onClose} variant="outlined" sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>Annuler</Button>
+        <Button onClick={onClose} variant="outlined"
+          sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0' }}>
+          Annuler
+        </Button>
         <Button onClick={() => handleSubmit('brouillon')} variant="outlined" disabled={loading}
           sx={{ borderRadius: 2, textTransform: 'none', color: '#607D8B', borderColor: '#B0BEC5' }}>
           Enregistrer brouillon
@@ -1002,13 +1017,15 @@ export default function CommandesPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
         mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" fontWeight={800} color="#0D47A1">Gestion des Commandes</Typography>
+          <Typography variant="h4" fontWeight={800} color="#0D47A1">
+            Gestion des Commandes
+          </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Créez et suivez vos bons de commande fournisseurs.
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* ✅ Bouton suppression multiple */}
+          {/*  Bouton suppression multiple */}
           {selection.length > 0 && (
             <Button variant="contained" color="error"
               startIcon={suppLoading ? <CircularProgress size={16} color="inherit" /> : <DeleteSweep />}
@@ -1018,7 +1035,8 @@ export default function CommandesPage() {
             </Button>
           )}
           <Tooltip title="Actualiser">
-            <IconButton onClick={fetchCommandes} sx={{ color: '#2196F3', border: '1px solid #E3F2FD' }}>
+            <IconButton onClick={fetchCommandes}
+              sx={{ color: '#2196F3', border: '1px solid #E3F2FD' }}>
               <Refresh />
             </IconButton>
           </Tooltip>
