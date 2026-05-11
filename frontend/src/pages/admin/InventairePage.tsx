@@ -22,7 +22,7 @@ import { medicamentService } from '../../services/medicamentService';
 interface Medicament {
   id: number; nom_commercial: string; dci: string;
   forme_galenique: string; dosage: string; unite_stock: string;
-  prix_unitaire: string; seuil_alerte: number;
+  prix_vente: string; seuil_alerte: number;
   conditions_stockage: string; indications_therapeutiques: string;
   code_barres: string; est_actif: boolean;
   categorie: number; categorie_nom: string;
@@ -104,7 +104,7 @@ async function exporterInventairePDF(medicaments: Medicament[], userName = 'Admi
     { label: 'Stock',            x: 117, maxW: 14 },
     { label: 'Seuil',            x: 133, maxW: 12 },
     { label: 'Expiration',       x: 148, maxW: 22 },
-    { label: 'Prix (FCFA)',      x: 173, maxW: 26 },
+    { label: 'Prix vente (FCFA)',      x: 173, maxW: 26 },
     { label: 'Conditions',       x: 202, maxW: 40 },
     { label: 'Indications',      x: 245, maxW: 45 },
   ];
@@ -241,7 +241,7 @@ async function exporterInventairePDF(medicaments: Medicament[], userName = 'Admi
       doc.setFont('helvetica', 'normal'); doc.setTextColor(33, 33, 33);
       doc.text(String(med.seuil_alerte),                           COLS[4].x, y);
       doc.text(formatDateCourt(med.date_peremption),               COLS[5].x, y);
-      doc.text(formatPrix(med.prix_unitaire),                      COLS[6].x, y);
+      doc.text(formatPrix(med.prix_vente),                      COLS[6].x, y);
       doc.text(truncate(med.conditions_stockage, 24),              COLS[7].x, y);
       doc.text(truncate(med.indications_therapeutiques, 30),       COLS[8].x, y);
 

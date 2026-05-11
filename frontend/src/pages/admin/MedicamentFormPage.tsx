@@ -30,7 +30,7 @@ interface FormData {
   forme_galenique: string;
   dosage: string;
   unite_stock: string;
-  prix_unitaire: string;
+  prix_vente: string;
   seuil_alerte: number;
   conditions_stockage: string;
   indications_therapeutiques: string;
@@ -96,7 +96,7 @@ export default function MedicamentFormPage() {
   const { control, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       nom_commercial: '', dci: '', forme_galenique: 'Comprimé',
-      dosage: '', unite_stock: '', prix_unitaire: '',
+      dosage: '', unite_stock: '', prix_vente: '',
       seuil_alerte: 10, conditions_stockage: '',
       indications_therapeutiques: '', code_barres: '', categorie: '',
       numero_lot_initial: '', date_peremption_initiale: '', fournisseur_associe: '',
@@ -120,7 +120,7 @@ export default function MedicamentFormPage() {
         setValue('forme_galenique',            m.forme_galenique);
         setValue('dosage',                     m.dosage);
         setValue('unite_stock',                m.unite_stock);
-        setValue('prix_unitaire',              m.prix_unitaire);
+        setValue('prix_vente',              m.prix_vente);
         setValue('seuil_alerte',               m.seuil_alerte);
         setValue('conditions_stockage',        m.conditions_stockage || '');
         setValue('indications_therapeutiques', m.indications_therapeutiques || '');
@@ -205,9 +205,10 @@ export default function MedicamentFormPage() {
     try {
       const payload: MedicamentPayload = {
         ...data,
-        categorie:    Number(data.categorie),
+        categorie: Number(data.categorie),
         seuil_alerte: Number(data.seuil_alerte),
-        est_actif:    true,
+        est_actif: true,
+        prix_unitaire: ''
       };
       if (isEdit) {
         await medicamentService.update(Number(id), payload);
@@ -344,11 +345,21 @@ export default function MedicamentFormPage() {
                 />
               )} />
 
-            <Controller name="prix_unitaire" control={control} rules={{ required: 'Prix obligatoire' }}
+            <Controller name="prix_vente" control={control} rules={{ required: 'Prix de vente obligatoire' }}
               render={({ field }) => (
-                <TextField {...field} label="Prix Unitaire (FCFA) *" type="number" placeholder="ex: 2500"
-                  error={!!errors.prix_unitaire} helperText={errors.prix_unitaire?.message}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                <TextField
+                  {...field}
+                  label="Prix de vente au patient (FCFA) *"
+                  type="number"
+                  placeholder="ex: 2500"
+                  error={!!errors.prix_vente}
+                  helperText={
+                    errors.prix_vente?.message ||
+                    'Prix facturé au patient. Ne pas confondre avec le prix d\'achat fournisseur.'
+                  }
+                  FormHelperTextProps={{ sx: { color: errors.prix_vente ? 'error.main' : '#607D8B', fontSize: 11 } }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
               )} />
           </Box>
         </Section>
