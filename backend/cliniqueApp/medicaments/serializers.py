@@ -4,30 +4,40 @@ from .models import Medicament, Categorie
 
 
 class CategorieSerializer(serializers.ModelSerializer):
+    nb_medicaments = serializers.SerializerMethodField()
+
     class Meta:
         model  = Categorie
-        fields = ['id', 'nom', 'description']
+        fields = ['id', 'nom', 'description', 'nb_medicaments']
+
+    def get_nb_medicaments(self, obj):
+        return obj.medicaments.filter(est_actif=True).count()
 
 
 class MedicamentSerializer(serializers.ModelSerializer):
-    categorie_nom      = serializers.CharField(source='categorie.nom', read_only=True)
-    stock_actuel       = serializers.SerializerMethodField()
-    date_peremption    = serializers.SerializerMethodField()
-    numero_lot_actuel  = serializers.SerializerMethodField()
-    fournisseur_id     = serializers.SerializerMethodField()
-    fournisseur_nom    = serializers.SerializerMethodField()
+    categorie_nom     = serializers.CharField(source='categorie.nom', read_only=True)
+    stock_actuel      = serializers.SerializerMethodField()
+    date_peremption   = serializers.SerializerMethodField()
+    numero_lot_actuel = serializers.SerializerMethodField()
+    fournisseur_id    = serializers.SerializerMethodField()
+    fournisseur_nom   = serializers.SerializerMethodField()
 
     class Meta:
         model  = Medicament
         fields = [
             'id', 'nom_commercial', 'dci', 'forme_galenique',
-            'dosage', 'unite_stock', 'prix_unitaire', 'seuil_alerte',
-            'conditions_stockage', 'indications_therapeutiques',
-            'code_barres', 'est_actif', 'categorie', 'categorie_nom',
-            # champs calculés depuis LotStock
+            'dosage', 'unite_stock',
+            # ✅ prix_vente = prix de vente au patient UNIQUEMENT
+            # N'est PAS le prix d'achat fournisseur
+            'prix_vente',
+            'seuil_alerte', 'conditions_stockage',
+            'indications_therapeutiques', 'code_barres', 'est_actif',
+            'categorie', 'categorie_nom',
+            # Champs calculés depuis LotStock
             'stock_actuel', 'date_peremption', 'numero_lot_actuel',
             'fournisseur_id', 'fournisseur_nom',
         ]
+        read_only_fields = ['id']
 
     def get_stock_actuel(self, obj):
         try:
@@ -82,19 +92,20 @@ class MedicamentSerializer(serializers.ModelSerializer):
             return None
 
     def validate_code_barres(self, value):
-        instance = self.instance
+        if not value:
+            return None
         qs = Medicament.objects.filter(code_barres=value)
-        if instance:
-            qs = qs.exclude(pk=instance.pk)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError(
-                "Un médicament avec ce code-barres existe déjà."
+                'Ce code-barres est déjà utilisé.'
             )
         return value
 
-    def validate_prix_unitaire(self, value):
+    def validate_prix_vente(self, value):
         if value is not None and value < 0:
             raise serializers.ValidationError(
-                "Le prix unitaire ne peut pas être négatif."
+                'Le prix de vente ne peut pas être négatif.'
             )
         return value
