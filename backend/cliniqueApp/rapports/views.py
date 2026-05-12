@@ -1,9 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from cliniqueApp.users.permissions import EstAdminOuPharmacien
-from .models import JournalAudit, Signature
+from .models import JournalAudit, Signature, LogoClinique
 
 
 class JournalAuditViewSet(viewsets.ViewSet):
@@ -45,22 +44,19 @@ class SignatureView(APIView):
     permission_classes = [EstAdminOuPharmacien]
 
     def get(self, request):
-        """GET /api/v1/signature/ — récupérer la signature actuelle"""
         sig = Signature.objects.first()
         if not sig:
             return Response({'exists': False})
-
         return Response({
             'exists':    True,
             'id':        sig.id,
             'nom':       sig.nom,
             'fonction':  sig.fonction,
-            'image_b64': sig.image_b64,  # ✅ on retourne le base64 stocké
+            'image_b64': sig.image_b64,
             'created_at': sig.created_at,
         })
 
     def post(self, request):
-        """POST /api/v1/signature/ — créer ou mettre à jour"""
         nom       = request.data.get('nom', '').strip()
         fonction  = request.data.get('fonction', '').strip()
         image_b64 = request.data.get('image', '').strip()
@@ -70,17 +66,14 @@ class SignatureView(APIView):
         if not image_b64:
             return Response({'error': "L'image est requise."}, status=400)
 
-        # Convertir base64 → fichier image (optionnel, le base64 suffit pour le PDF)
         import base64, uuid
         from django.core.files.base import ContentFile
 
-        # Nettoyer l'entête data:image/...;base64,
         if ',' in image_b64:
             _header, data_b64 = image_b64.split(',', 1)
         else:
             data_b64 = image_b64
 
-        # Stocker ou mettre à jour (une seule signature dans le système)
         sig = Signature.objects.first()
 
         try:
@@ -93,8 +86,7 @@ class SignatureView(APIView):
         if sig:
             sig.nom       = nom
             sig.fonction  = fonction
-            sig.image_b64 = image_b64  # ✅ stocker le base64 complet avec entête
-            # Remplacer le fichier image
+            sig.image_b64 = image_b64
             if sig.image:
                 try:
                     sig.image.delete(save=False)
@@ -107,7 +99,6 @@ class SignatureView(APIView):
             sig.image.save(filename, image_file, save=False)
             sig.save()
 
-        # Journal d'audit
         try:
             JournalAudit.objects.create(
                 action='MISE_A_JOUR_SIGNATURE',
@@ -127,4 +118,57 @@ class SignatureView(APIView):
             'nom':       sig.nom,
             'fonction':  sig.fonction,
             'image_b64': sig.image_b64,
-        }, status=200)
+        })
+
+
+# ✅ NOUVEAU : Gestion du logo de la clinique
+class LogoView(APIView):
+    permission_classes = [EstAdminOuPharmacien]
+
+    def get(self, request):
+        logo = LogoClinique.objects.first()
+        if not logo:
+            return Response({'exists': False, 'nom_clinique': 'Ma Clinique', 'image_b64': ''})
+        return Response({
+            'exists':      True,
+            'id':          logo.id,
+            'nom_clinique': logo.nom_clinique,
+            'image_b64':   logo.image_b64,
+            'updated_at':  logo.updated_at,
+        })
+
+    def post(self, request):
+        nom_clinique = request.data.get('nom_clinique', 'Ma Clinique').strip()
+        image_b64    = request.data.get('image', '').strip()
+
+        logo = LogoClinique.objects.first()
+
+        if logo:
+            logo.nom_clinique = nom_clinique
+            if image_b64:
+                logo.image_b64 = image_b64
+            logo.save()
+        else:
+            logo = LogoClinique.objects.create(
+                nom_clinique=nom_clinique,
+                image_b64=image_b64,
+            )
+
+        try:
+            JournalAudit.objects.create(
+                action='MISE_A_JOUR_LOGO',
+                entite_concernee='Logo clinique',
+                nouvelle_valeur={'nom_clinique': nom_clinique},
+                utilisateur=request.user,
+                adresse_ip=request.META.get('REMOTE_ADDR'),
+            )
+        except Exception:
+            pass
+
+        print(f'[LOGO] Enregistré : {nom_clinique}')
+
+        return Response({
+            'message':     'Logo enregistré avec succès.',
+            'nom_clinique': logo.nom_clinique,
+            'image_b64':   logo.image_b64,
+        })

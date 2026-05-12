@@ -5,7 +5,8 @@ import {
 } from '@mui/material';
 import {
   Settings, Notifications, Inventory2, Save,
-  Draw, Delete, CheckCircle,
+  Draw, Delete, CheckCircle, Image as ImageIcon,
+  CloudUpload,
 } from '@mui/icons-material';
 import toast, { Toaster } from 'react-hot-toast';
 import api from '../../services/authService';
@@ -17,7 +18,15 @@ const signatureService = {
   save: (data: any) => api.post('/signature/', data),
 };
 
-// ── Canvas signature maison (sans lib externe pour éviter le bug) ────────────
+// ── Service logo ──────────────────────────────────────────────────────────────
+const logoService = {
+  get:  ()          => api.get('/logo/'),
+  save: (data: any) => api.post('/logo/', data),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Canvas signature maison (INCHANGÉ — ne pas toucher)
+// ─────────────────────────────────────────────────────────────────────────────
 function SignaturePad({
   onSave, onClear, sigExistante,
 }: {
@@ -25,34 +34,29 @@ function SignaturePad({
   onClear:       () => void;
   sigExistante?: string | null;
 }) {
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const drawing     = useRef(false);
-  const isEmpty     = useRef(true);
+  const drawing      = useRef(false);
+  const isEmpty      = useRef(true);
 
-  // ── Redimensionner le canvas quand le conteneur change de taille ───────────
   const resizeCanvas = useCallback(() => {
     const canvas    = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    // Sauvegarder le contenu actuel
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width  = canvas.width;
     tempCanvas.height = canvas.height;
     tempCanvas.getContext('2d')?.drawImage(canvas, 0, 0);
 
-    // Ajuster la taille réelle du canvas
     const rect    = container.getBoundingClientRect();
     canvas.width  = rect.width;
     canvas.height = 180;
 
-    // Fond blanc
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // Restaurer le contenu
       if (!isEmpty.current) ctx.drawImage(tempCanvas, 0, 0);
       ctx.strokeStyle = '#000';
       ctx.lineWidth   = 2;
@@ -68,19 +72,14 @@ function SignaturePad({
     return () => observer.disconnect();
   }, [resizeCanvas]);
 
-  // ── Coordonnées correctes (tient compte du scale CSS) ─────────────────────
   const getPos = (e: MouseEvent | TouchEvent): { x: number; y: number } => {
     const canvas = canvasRef.current!;
     const rect   = canvas.getBoundingClientRect();
     const scaleX = canvas.width  / rect.width;
     const scaleY = canvas.height / rect.height;
-
     if ('touches' in e) {
       const touch = e.touches[0];
-      return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top)  * scaleY,
-      };
+      return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY };
     }
     return {
       x: ((e as MouseEvent).clientX - rect.left) * scaleX,
@@ -88,7 +87,6 @@ function SignaturePad({
     };
   };
 
-  // ── Dessin ─────────────────────────────────────────────────────────────────
   const startDraw = useCallback((e: MouseEvent | TouchEvent) => {
     e.preventDefault();
     drawing.current = true;
@@ -110,15 +108,11 @@ function SignaturePad({
     ctx.stroke();
   }, []);
 
-  const stopDraw = useCallback(() => {
-    drawing.current = false;
-  }, []);
+  const stopDraw = useCallback(() => { drawing.current = false; }, []);
 
-  // ── Attacher les événements ────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     canvas.addEventListener('mousedown',  startDraw, { passive: false });
     canvas.addEventListener('mousemove',  draw,      { passive: false });
     canvas.addEventListener('mouseup',    stopDraw);
@@ -126,7 +120,6 @@ function SignaturePad({
     canvas.addEventListener('touchstart', startDraw, { passive: false });
     canvas.addEventListener('touchmove',  draw,      { passive: false });
     canvas.addEventListener('touchend',   stopDraw);
-
     return () => {
       canvas.removeEventListener('mousedown',  startDraw);
       canvas.removeEventListener('mousemove',  draw);
@@ -138,7 +131,6 @@ function SignaturePad({
     };
   }, [startDraw, draw, stopDraw]);
 
-  // ── Actions ────────────────────────────────────────────────────────────────
   const handleEffacer = () => {
     const canvas = canvasRef.current;
     const ctx    = canvas?.getContext('2d');
@@ -150,22 +142,15 @@ function SignaturePad({
   };
 
   const handleSauvegarder = () => {
-    if (isEmpty.current) {
-      toast.error('Veuillez dessiner votre signature.');
-      return;
-    }
-    const dataUrl = canvasRef.current?.toDataURL('image/png') || '';
-    onSave(dataUrl);
+    if (isEmpty.current) { toast.error('Veuillez dessiner votre signature.'); return; }
+    const dataUrl = canvasRef.current?.toDataURL('image/png');
+    if (dataUrl) onSave(dataUrl);
   };
 
   return (
     <Box ref={containerRef} sx={{ width: '100%' }}>
-      <Alert severity="info" icon={false}
-        sx={{ mb: 1.5, borderRadius: 2, fontSize: 12, py: 0.5 }}>
-        ✏️ Dessinez votre signature ci-dessous (souris ou doigt sur mobile)
-      </Alert>
       <Box sx={{
-        border: '2px dashed #90CAF9', borderRadius: 2, overflow: 'hidden',
+        border: '2px dashed #90CAF9', borderRadius: 2,
         cursor: 'crosshair', bgcolor: 'white', width: '100%',
         '&:hover': { borderColor: '#1565C0', borderStyle: 'solid' },
       }}>
@@ -191,7 +176,9 @@ function SignaturePad({
   );
 }
 
-// ── Onglet Notifications ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Onglet Notifications (INCHANGÉ)
+// ─────────────────────────────────────────────────────────────────────────────
 function OngletNotifications() {
   const [prefs, setPrefs] = useState({
     stocks_faibles_email:    true,
@@ -205,8 +192,7 @@ function OngletNotifications() {
   });
   const [saving, setSaving] = useState(false);
 
-  const toggle = (key: string) =>
-    setPrefs(p => ({ ...p, [key]: !(p as any)[key] }));
+  const toggle = (key: string) => setPrefs(p => ({ ...p, [key]: !(p as any)[key] }));
 
   const handleSave = async () => {
     setSaving(true);
@@ -247,14 +233,16 @@ function OngletNotifications() {
         <Typography fontSize={12} color="text.secondary" sx={{ mb: 2 }}>
           Choisissez comment être informé des variations de stock critiques.
         </Typography>
-        <NotifRow label="Stocks Faibles" desc="Notifier quand un médicament passe sous le seuil d'alerte."
+        <NotifRow label="Stocks Faibles"
+          desc="Notifier quand un médicament passe sous le seuil d'alerte."
           keyEmail="stocks_faibles_email" keySms="stocks_faibles_sms" />
-        <NotifRow label="Dates de Péremption" desc="Alerte pour les produits expirant dans les 30 jours."
+        <NotifRow label="Dates de Péremption"
+          desc="Alerte pour les produits expirant dans les 30 jours."
           keyEmail="peremption_email" keySms="peremption_sms" />
-        <NotifRow label="Retards de Livraison" desc="Alerte si un bon de commande dépasse la date prévue de 48h."
+        <NotifRow label="Retards de Livraison"
+          desc="Alerte si un bon de commande dépasse la date prévue de 48h."
           keyEmail="retards_livraison_email" keySms="retards_livraison_sms" />
       </Card>
-
       <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3, mb: 3 }}>
         <Typography fontWeight={700} color="#0D47A1" fontSize={15} sx={{ mb: 2 }}>
           Canaux de communication
@@ -271,7 +259,6 @@ function OngletNotifications() {
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         </Box>
       </Card>
-
       <Button variant="contained"
         startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
         onClick={handleSave} disabled={saving}
@@ -283,7 +270,9 @@ function OngletNotifications() {
   );
 }
 
-// ── Onglet Seuils ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Onglet Seuils (INCHANGÉ)
+// ─────────────────────────────────────────────────────────────────────────────
 function OngletSeuils() {
   const [seuils, setSeuils] = useState({
     seuil_stock_global:        10,
@@ -311,14 +300,14 @@ function OngletSeuils() {
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {[
-            { label: 'Seuil de stock global (unités)', key: 'seuil_stock_global',        color: '#F57F17',
-              desc: 'Déclenche une alerte Avertissement.' },
-            { label: 'Seuil critique (unités)',        key: 'seuil_critique',             color: '#C62828',
-              desc: 'Déclenche une alerte Critique.' },
-            { label: 'Avertissement péremption (j)',   key: 'seuil_peremption_warning',   color: '#F57F17',
-              desc: 'Alerte si lot expire dans moins de X jours.' },
-            { label: 'Critique péremption (j)',        key: 'seuil_peremption_critique',  color: '#C62828',
-              desc: 'Alerte critique si lot expire dans moins de X jours.' },
+            { label: 'Seuil de stock global (unités)', key: 'seuil_stock_global',
+              color: '#F57F17', desc: 'Déclenche une alerte Avertissement.' },
+            { label: 'Seuil critique (unités)',        key: 'seuil_critique',
+              color: '#C62828', desc: 'Déclenche une alerte Critique.' },
+            { label: 'Avertissement péremption (j)',   key: 'seuil_peremption_warning',
+              color: '#F57F17', desc: 'Alerte si lot expire dans moins de X jours.' },
+            { label: 'Critique péremption (j)',        key: 'seuil_peremption_critique',
+              color: '#C62828', desc: 'Alerte critique si lot expire dans moins de X jours.' },
           ].map(({ label, key, color, desc }) => (
             <Box key={key} sx={{ p: 2, border: `1px solid ${color}30`,
               borderLeft: `4px solid ${color}`, borderRadius: 2, bgcolor: `${color}08` }}>
@@ -344,15 +333,19 @@ function OngletSeuils() {
   );
 }
 
-// ── Onglet Signature ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Onglet Signature (INCHANGÉ — logique préservée intégralement)
+// ─────────────────────────────────────────────────────────────────────────────
 function OngletSignature() {
-  const { user }    = useAuthStore();
-  const [nom,       setNom]       = useState(user ? `${user.prenom} ${user.nom}` : '');
-  const [fonction,  setFonction]  = useState('Pharmacien en chef');
-  const [saving,    setSaving]    = useState(false);
-  const [loading,   setLoading]   = useState(true);
-  const [sigB64,    setSigB64]    = useState<string | null>(null);  // signature validée
+  const { user }     = useAuthStore();
+  const [nom,        setNom]        = useState(user ? `${user.prenom} ${user.nom}` : '');
+  const [fonction,   setFonction]   = useState('Pharmacien en chef');
+  const [saving,     setSaving]     = useState(false);
+  const [loading,    setLoading]    = useState(true);
+  const [sigB64,     setSigB64]     = useState<string | null>(null);
   const [modeDessin, setModeDessin] = useState(false);
+  // ✅ Charger le logo pour l'aperçu PDF
+  const [logoB64,    setLogoB64]    = useState<string | null>(null);
 
   useEffect(() => {
     signatureService.get()
@@ -366,6 +359,12 @@ function OngletSignature() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    // Charger le logo pour l'aperçu
+    logoService.get().then(r => {
+      const d = r.data as any;
+      if (d.exists && d.image_b64) setLogoB64(d.image_b64);
+    }).catch(() => {});
   }, []);
 
   const handleSignatureSaved = (dataUrl: string) => {
@@ -377,12 +376,11 @@ function OngletSignature() {
   const handleEnregistrer = async () => {
     if (!nom.trim()) { toast.error('Nom du signataire requis.'); return; }
     if (!sigB64)     { toast.error('Veuillez dessiner votre signature.'); return; }
-
     setSaving(true);
     try {
       await signatureService.save({ nom, fonction, image: sigB64 });
       toast.success('✅ Signature enregistrée avec succès !', { duration: 4000 });
-    } catch { toast.error('Erreur lors de l\'enregistrement.'); }
+    } catch { toast.error("Erreur lors de l'enregistrement."); }
     finally { setSaving(false); }
   };
 
@@ -426,7 +424,6 @@ function OngletSignature() {
           )}
         </Box>
 
-        {/* Afficher la signature validée */}
         {sigB64 && !modeDessin && (
           <Box sx={{ border: '2px solid #E3F2FD', borderRadius: 2, p: 3,
             bgcolor: '#FAFCFF', display: 'flex', justifyContent: 'center',
@@ -440,7 +437,6 @@ function OngletSignature() {
           </Box>
         )}
 
-        {/* Canvas dessin */}
         {(!sigB64 || modeDessin) && (
           <>
             {modeDessin && sigB64 && (
@@ -457,23 +453,39 @@ function OngletSignature() {
         )}
       </Card>
 
-      {/* Aperçu PDF */}
+      {/* Aperçu PDF — ✅ affiche aussi le logo si disponible */}
       {sigB64 && (
         <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3, mb: 3 }}>
           <Typography fontWeight={700} color="#0D47A1" fontSize={15} sx={{ mb: 2 }}>
             Aperçu dans le document PDF
           </Typography>
-          <Box sx={{ bgcolor: '#F8FBFF', border: '1px solid #E3F2FD', borderRadius: 2,
-            p: 3, display: 'inline-block', minWidth: 220 }}>
-            <Box sx={{ borderBottom: '1px solid #CFD8DC', pb: 1, mb: 1,
-              display: 'flex', justifyContent: 'center', alignItems: 'flex-end', minHeight: 80 }}>
-              <img src={sigB64} alt="Signature"
-                style={{ maxHeight: 70, maxWidth: 200, display: 'block' }} />
+          <Box sx={{
+            bgcolor: '#F8FBFF', border: '1px solid #E3F2FD', borderRadius: 2, p: 3,
+            maxWidth: 420,
+          }}>
+            {/* Logo en haut si disponible */}
+            {logoB64 && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2,
+                pb: 2, borderBottom: '1px solid #E3F2FD' }}>
+                <img src={logoB64} alt="Logo clinique"
+                  style={{ maxHeight: 40, maxWidth: 100, objectFit: 'contain' }} />
+                <Typography fontSize={13} fontWeight={700} color="#0D47A1">
+                  BON DE COMMANDE
+                </Typography>
+              </Box>
+            )}
+            {/* Signature en bas à droite */}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Box sx={{ textAlign: 'center', minWidth: 180 }}>
+                <Box sx={{ borderBottom: '1px solid #CFD8DC', pb: 1, mb: 1,
+                  display: 'flex', justifyContent: 'center', alignItems: 'flex-end', minHeight: 70 }}>
+                  <img src={sigB64} alt="Signature"
+                    style={{ maxHeight: 60, maxWidth: 180, display: 'block' }} />
+                </Box>
+                <Typography fontSize={13} fontWeight={700} color="#0D47A1">{nom}</Typography>
+                <Typography fontSize={12} color="text.secondary">{fonction}</Typography>
+              </Box>
             </Box>
-            <Typography fontSize={13} fontWeight={700} color="#0D47A1"
-              sx={{ textAlign: 'center' }}>{nom}</Typography>
-            <Typography fontSize={12} color="text.secondary"
-              sx={{ textAlign: 'center' }}>{fonction}</Typography>
           </Box>
         </Card>
       )}
@@ -498,7 +510,195 @@ function OngletSignature() {
   );
 }
 
-// ── Onglet Système ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ NOUVEAU — Onglet Logo
+// ─────────────────────────────────────────────────────────────────────────────
+function OngletLogo() {
+  const [nomClinique,  setNomClinique]  = useState('Ma Clinique');
+  const [logoB64,      setLogoB64]      = useState<string | null>(null);
+  const [previewB64,   setPreviewB64]   = useState<string | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [saving,       setSaving]       = useState(false);
+  const [dragging,     setDragging]     = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    logoService.get()
+      .then(r => {
+        const d = r.data as any;
+        if (d.exists) {
+          setNomClinique(d.nom_clinique || 'Ma Clinique');
+          if (d.image_b64) setLogoB64(d.image_b64);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const lireFichier = (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Fichier trop volumineux (max 2 Mo).');
+      return;
+    }
+    if (!['image/png', 'image/jpeg', 'image/svg+xml'].includes(file.type)) {
+      toast.error('Format non supporté. Utilisez PNG, JPG ou SVG.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const result = e.target?.result as string;
+      setPreviewB64(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) lireFichier(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) lireFichier(file);
+  };
+
+  const handleEnregistrer = async () => {
+    const imageAEnvoyer = previewB64 || logoB64;
+    setSaving(true);
+    try {
+      await logoService.save({
+        nom_clinique: nomClinique,
+        image:        imageAEnvoyer || '',
+      });
+      if (previewB64) setLogoB64(previewB64);
+      setPreviewB64(null);
+      toast.success('✅ Logo enregistré avec succès !', { duration: 4000 });
+    } catch {
+      toast.error("Erreur lors de l'enregistrement du logo.");
+    } finally { setSaving(false); }
+  };
+
+  const logoActuel = previewB64 || logoB64;
+
+  if (loading) return (
+    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+      <CircularProgress />
+    </Box>
+  );
+
+  return (
+    <Box>
+      {/* Nom de la clinique */}
+      <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <ImageIcon sx={{ color: '#1565C0', fontSize: 20 }} />
+          <Typography fontWeight={700} color="#0D47A1" fontSize={15}>
+            Identité de la clinique
+          </Typography>
+        </Box>
+        <TextField
+          label="Nom de la clinique *"
+          value={nomClinique}
+          onChange={e => setNomClinique(e.target.value)}
+          fullWidth
+          placeholder="Ex : Clinique Sainte-Marie"
+          helperText="Ce nom apparaîtra en en-tête des documents PDF."
+          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+        />
+      </Card>
+
+      {/* Upload logo */}
+      <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3, mb: 3 }}>
+        <Typography fontWeight={700} color="#0D47A1" fontSize={15} sx={{ mb: 2 }}>
+          Logo de la clinique
+        </Typography>
+
+        {/* Zone drag-and-drop */}
+        <Box
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          sx={{
+            border: `2px dashed ${dragging ? '#1565C0' : '#90CAF9'}`,
+            borderRadius: 2,
+            p: 4,
+            textAlign: 'center',
+            cursor: 'pointer',
+            bgcolor: dragging ? '#E3F2FD' : '#F8FBFF',
+            transition: 'all 0.2s',
+            mb: 2,
+            '&:hover': { borderColor: '#1565C0', bgcolor: '#E3F2FD' },
+          }}
+        >
+          <CloudUpload sx={{ fontSize: 40, color: '#90CAF9', mb: 1 }} />
+          <Typography fontWeight={600} color="#0D47A1" fontSize={14}>
+            Glisser-déposer un fichier ici
+          </Typography>
+          <Typography fontSize={12} color="text.secondary" sx={{ mt: 0.5 }}>
+            ou cliquer pour choisir — PNG, JPG, SVG — max 2 Mo
+          </Typography>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/svg+xml"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+        </Box>
+
+        {/* Prévisualisation */}
+        {logoActuel && (
+          <Box sx={{ border: '1px solid #E3F2FD', borderRadius: 2, p: 3, bgcolor: 'white' }}>
+            <Typography fontSize={12} color="text.secondary" fontWeight={600} sx={{ mb: 1.5 }}>
+              {previewB64 ? '🆕 Nouveau logo (non encore enregistré)' : '✅ Logo actuel'}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Box sx={{ border: '1px solid #E3F2FD', borderRadius: 2, p: 2, bgcolor: '#FAFCFF' }}>
+                <img
+                  src={logoActuel}
+                  alt="Logo clinique"
+                  style={{ maxHeight: 80, maxWidth: 200, objectFit: 'contain', display: 'block' }}
+                />
+              </Box>
+              <Box>
+                <Typography fontSize={14} fontWeight={700} color="#0D47A1">{nomClinique}</Typography>
+                <Typography fontSize={12} color="text.secondary" sx={{ mt: 0.5 }}>
+                  Aperçu de l'en-tête des documents PDF
+                </Typography>
+                {previewB64 && (
+                  <Button size="small" color="error" sx={{ mt: 1, textTransform: 'none', fontSize: 11 }}
+                    onClick={() => setPreviewB64(null)}>
+                    Annuler la sélection
+                  </Button>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        )}
+      </Card>
+
+      <Button
+        variant="contained"
+        startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />}
+        onClick={handleEnregistrer}
+        disabled={saving || !nomClinique.trim()}
+        sx={{
+          borderRadius: 2, textTransform: 'none', fontWeight: 700,
+          background: 'linear-gradient(135deg, #2196F3, #1565C0)',
+        }}
+      >
+        {saving ? 'Enregistrement...' : 'Enregistrer le logo'}
+      </Button>
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onglet Système (INCHANGÉ)
+// ─────────────────────────────────────────────────────────────────────────────
 function OngletSysteme() {
   return (
     <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3 }}>
@@ -525,7 +725,9 @@ function OngletSysteme() {
   );
 }
 
-// ── Page principale ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Page principale — ✅ 5 onglets (Logo ajouté entre Signature et Système)
+// ─────────────────────────────────────────────────────────────────────────────
 export default function ParametresPage() {
   const [onglet, setOnglet] = useState(0);
 
@@ -534,7 +736,9 @@ export default function ParametresPage() {
       <Toaster position="top-right" />
 
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" fontWeight={800} color="#0D47A1">Paramètres du Système</Typography>
+        <Typography variant="h4" fontWeight={800} color="#0D47A1">
+          Paramètres du Système
+        </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           Gérez les préférences de votre clinique, les seuils d'inventaire et les connexions API.
         </Typography>
@@ -543,17 +747,20 @@ export default function ParametresPage() {
       <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, mb: 3 }}>
         <Tabs value={onglet} onChange={(_, v) => setOnglet(v)}
           sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, fontSize: 13 } }}>
-          <Tab label="Notifications"  icon={<Notifications  sx={{ fontSize: 17 }} />} iconPosition="start" />
-          <Tab label="Seuils de Stock" icon={<Inventory2    sx={{ fontSize: 17 }} />} iconPosition="start" />
-          <Tab label="Signature"      icon={<Draw           sx={{ fontSize: 17 }} />} iconPosition="start" />
-          <Tab label="Système & API"  icon={<Settings       sx={{ fontSize: 17 }} />} iconPosition="start" />
+          <Tab label="Notifications"  icon={<Notifications sx={{ fontSize: 17 }} />} iconPosition="start" />
+          <Tab label="Seuils de Stock" icon={<Inventory2   sx={{ fontSize: 17 }} />} iconPosition="start" />
+          <Tab label="Signature"      icon={<Draw          sx={{ fontSize: 17 }} />} iconPosition="start" />
+          {/* ✅ NOUVEL onglet Logo */}
+          <Tab label="Logo"           icon={<ImageIcon     sx={{ fontSize: 17 }} />} iconPosition="start" />
+          <Tab label="Système & API"  icon={<Settings      sx={{ fontSize: 17 }} />} iconPosition="start" />
         </Tabs>
       </Card>
 
       {onglet === 0 && <OngletNotifications />}
       {onglet === 1 && <OngletSeuils />}
       {onglet === 2 && <OngletSignature />}
-      {onglet === 3 && <OngletSysteme />}
+      {onglet === 3 && <OngletLogo />}     {/* ✅ NOUVEAU */}
+      {onglet === 4 && <OngletSysteme />}  {/* décalé de 3 → 4 */}
     </Box>
   );
 }
