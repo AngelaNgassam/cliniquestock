@@ -9,7 +9,9 @@ import {
   Dashboard, Inventory2, LocalShipping, ShoppingCart,
   NotificationsNone, Assessment, People, Settings,
   Search, Menu as MenuIcon, Logout, AdminPanelSettings,
-  Notifications
+  Notifications,
+  Inventory,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 
 import { useAuthStore } from '../../store/authStore';
@@ -25,7 +27,9 @@ const navItems = [
   { label: 'Fournisseurs',    icon: <LocalShipping />,     path: '/admin/fournisseurs' },
   { label: 'Commandes',       icon: <ShoppingCart />,      path: '/admin/commandes' },
   { label: 'Alertes',         icon: <NotificationsNone />, path: '/admin/alertes' },
-  { label: 'Rapports',        icon: <Assessment />,        path: '/admin/rapports' },  // ← corrigé
+  { label: 'Rapports',        icon: <Assessment />,        path: '/admin/rapports' },
+  { label: 'Inventaire physique', icon: <Inventory />, path: '/admin/inventaire-physique' },
+  { label: 'Historique', icon: <HistoryIcon />, path: '/admin/historique' },
   { label: 'Utilisateurs',    icon: <People />,            path: '/admin/utilisateurs' },
   { label: 'Paramètres',      icon: <Settings />,          path: '/admin/parametres' },
 ];

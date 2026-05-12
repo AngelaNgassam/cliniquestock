@@ -497,7 +497,16 @@ class CommandeViewSet(viewsets.ModelViewSet):
         if commande.statut in ['LIVREE', 'ANNULEE']:
             try:
                 ref = commande.reference
+                # ✅ CORRECTION : supprimer les réceptions liées avant la commande
+                # (Reception a on_delete=PROTECT sur commande)
+                try:
+                    from cliniqueApp.stock.models import Reception
+                    Reception.objects.filter(commande=commande).delete()
+                except Exception as e_rec:
+                    print(f'[SUPPRESSION] Nettoyage réceptions : {e_rec}')
+
                 commande.delete()
+
                 try:
                     from cliniqueApp.rapports.models import JournalAudit
                     JournalAudit.objects.create(
@@ -509,7 +518,9 @@ class CommandeViewSet(viewsets.ModelViewSet):
                     )
                 except Exception:
                     pass
+
                 return Response(status=status.HTTP_204_NO_CONTENT)
+
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -534,6 +545,7 @@ class CommandeViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
     @action(detail=False, methods=['delete'], url_path='supprimer_plusieurs')
     def supprimer_plusieurs(self, request):
         ids = request.data.get('ids', [])
@@ -541,9 +553,17 @@ class CommandeViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Aucun ID fourni.'}, status=400)
         try:
             commandes = Commande.objects.filter(id__in=ids, statut__in=['LIVREE', 'ANNULEE'])
-            count     = commandes.count()
+            count = commandes.count()
             if count == 0:
                 return Response({'error': 'Aucune commande éligible trouvée.'}, status=400)
+
+            # ✅ CORRECTION : supprimer les réceptions liées en cascade avant chaque commande
+            try:
+                from cliniqueApp.stock.models import Reception
+                Reception.objects.filter(commande__in=commandes).delete()
+            except Exception as e_rec:
+                print(f'[SUPPRESSION GROUPÉE] Nettoyage réceptions : {e_rec}')
+
             for cmd in commandes:
                 ref = cmd.reference
                 cmd.delete()
@@ -558,7 +578,9 @@ class CommandeViewSet(viewsets.ModelViewSet):
                     )
                 except Exception:
                     pass
+
             return Response({'message': f'{count} commande(s) supprimée(s).'})
+
         except Exception as e:
             import traceback
             traceback.print_exc()
