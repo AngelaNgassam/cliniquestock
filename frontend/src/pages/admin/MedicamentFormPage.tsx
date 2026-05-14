@@ -20,26 +20,26 @@ import { useAuthStore } from '../../store/authStore';
 import api from '../../services/authService';
 
 const FORMES = [
-  'Comprimé', 'Capsule', 'Solution huileuse', 'Gélule', 'Sirop', 'Injectable', 'Crème',
-  'Pommade', 'Suppositoire', 'Patch', 'Inhalateur', 'Gouttes', 'Sachet', 'Solution injectable', 'Comprimé effervescent',
+  'Comprimé', 'Capsule', 'Gélule', 'Sirop', 'Injectable', 
+  'Pommade', 'Suppositoire', 'Patch', 'Inhalateur', 'Autre',
 ];
 
+// ✅ prix_vente au lieu de prix_unitaire
 interface FormData {
-  nom_commercial: string;
-  dci: string;
-  forme_galenique: string;
-  dosage: string;
-  unite_stock: string;
-  prix_vente: string;
-  seuil_alerte: number;
-  conditions_stockage: string;
+  nom_commercial:             string;
+  dci:                        string;
+  forme_galenique:            string;
+  dosage:                     string;
+  unite_stock:                string;
+  prix_vente:                 string;   // ✅
+  seuil_alerte:               number;
+  conditions_stockage:        string;
   indications_therapeutiques: string;
-  code_barres: string;
-  categorie: number | '';
-  // ── Traçabilité (nouveaux champs) ──
-  numero_lot_initial: string;
-  date_peremption_initiale: string;
-  fournisseur_associe: number | '';
+  code_barres:                string;
+  categorie:                  number | '';
+  numero_lot_initial:         string;
+  date_peremption_initiale:   string;
+  fournisseur_associe:        number | '';
 }
 
 function Section({ icon, title, subtitle, children, accent = '#2196F3' }: {
@@ -47,13 +47,9 @@ function Section({ icon, title, subtitle, children, accent = '#2196F3' }: {
   children: React.ReactNode; accent?: string;
 }) {
   return (
-    <Card elevation={0} sx={{
-      border: '1px solid #E3F2FD', borderRadius: 3, mb: 3,
-      overflow: 'hidden',
-    }}>
+    <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, mb: 3, overflow: 'hidden' }}>
       <Box sx={{
-        px: 3, py: 2,
-        borderBottom: '1px solid #E3F2FD',
+        px: 3, py: 2, borderBottom: '1px solid #E3F2FD',
         background: 'linear-gradient(135deg, #F8FBFF, #EEF4FF)',
         display: 'flex', alignItems: 'center', gap: 1.5,
       }}>
@@ -69,9 +65,7 @@ function Section({ icon, title, subtitle, children, accent = '#2196F3' }: {
           <Typography variant="caption" color="text.secondary">{subtitle}</Typography>
         </Box>
       </Box>
-      <CardContent sx={{ p: 3 }}>
-        {children}
-      </CardContent>
+      <CardContent sx={{ p: 3 }}>{children}</CardContent>
     </Card>
   );
 }
@@ -96,9 +90,11 @@ export default function MedicamentFormPage() {
   const { control, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       nom_commercial: '', dci: '', forme_galenique: 'Comprimé',
-      dosage: '', unite_stock: '', prix_vente: '',
-      seuil_alerte: 10, conditions_stockage: '',
-      indications_therapeutiques: '', code_barres: '', categorie: '',
+      dosage: '', unite_stock: '',
+      prix_vente: '',        // ✅ renommé
+      seuil_alerte: 10,
+      conditions_stockage: '', indications_therapeutiques: '',
+      code_barres: '', categorie: '',
       numero_lot_initial: '', date_peremption_initiale: '', fournisseur_associe: '',
     },
   });
@@ -120,18 +116,17 @@ export default function MedicamentFormPage() {
         setValue('forme_galenique',            m.forme_galenique);
         setValue('dosage',                     m.dosage);
         setValue('unite_stock',                m.unite_stock);
-        setValue('prix_vente',              m.prix_vente);
+        setValue('prix_vente',                 String(m.prix_vente ?? ''));  // ✅ renommé
         setValue('seuil_alerte',               m.seuil_alerte);
         setValue('conditions_stockage',        m.conditions_stockage || '');
         setValue('indications_therapeutiques', m.indications_therapeutiques || '');
-        setValue('code_barres',                m.code_barres);
+        setValue('code_barres',                m.code_barres || '');
         setValue('categorie',                  m.categorie);
         setLoadingInit(false);
       });
     }
   }, [id, isEdit, setValue]);
 
-  // Suggérer un numéro de lot
   const suggererNumeroLot = async (medId?: number) => {
     try {
       const year = new Date().getFullYear();
@@ -139,7 +134,6 @@ export default function MedicamentFormPage() {
         const r = await api.get(`/receptions/numeros_lot/?medicament_id=${medId}`);
         setLotSuggere(r.data.prochain_numero || `LOT-${year}A`);
       } else {
-        // Pas encore créé → juste une suggestion générique
         setLotSuggere(`LOT-${year}A`);
       }
     } catch {
@@ -147,9 +141,7 @@ export default function MedicamentFormPage() {
     }
   };
 
-  useEffect(() => {
-    if (!isEdit) suggererNumeroLot();
-  }, [isEdit]);
+  useEffect(() => { if (!isEdit) suggererNumeroLot(); }, [isEdit]);
 
   const handleBarcodeDetected = async (code: string) => {
     setValue('code_barres', code);
@@ -168,19 +160,23 @@ export default function MedicamentFormPage() {
       } else if (info.source === 'rxnorm') {
         toast('🔵 DCI trouvée via RxNorm.', { icon: 'ℹ️', style: { background: '#E3F2FD', color: '#0D47A1' } });
       } else {
-        toast('📋 Nouveau médicament — remplissez manuellement.', { icon: '📝' });
+        toast(' Nouveau médicament, remplissez manuellement.', { icon: '📝' });
       }
     } finally { setFetchingInfo(false); }
   };
 
-  const openScanner  = () => setScanOpen(true);
+  const openScanner = () => setScanOpen(true);
   useEffect(() => {
     if (!scanOpen) return;
     const timer = setTimeout(() => {
       const el = document.getElementById(scanDivId);
       if (!el || scannerRef.current) return;
-      scannerRef.current = new Html5QrcodeScanner(scanDivId, { fps: 10, qrbox: { width: 250, height: 100 }, aspectRatio: 2.5 }, false);
-      scannerRef.current.render(decodedText => handleBarcodeDetected(decodedText), () => {});
+      scannerRef.current = new Html5QrcodeScanner(
+        scanDivId, { fps: 10, qrbox: { width: 250, height: 100 }, aspectRatio: 2.5 }, false
+      );
+      scannerRef.current.render(
+        decodedText => handleBarcodeDetected(decodedText), () => {}
+      );
     }, 400);
     return () => clearTimeout(timer);
   }, [scanOpen]);
@@ -203,13 +199,22 @@ export default function MedicamentFormPage() {
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
+      // ✅ Le payload utilise prix_vente
       const payload: MedicamentPayload = {
-        ...data,
-        categorie: Number(data.categorie),
-        seuil_alerte: Number(data.seuil_alerte),
-        est_actif: true,
-        prix_unitaire: ''
+        nom_commercial:             data.nom_commercial,
+        dci:                        data.dci,
+        forme_galenique:            data.forme_galenique,
+        dosage:                     data.dosage,
+        unite_stock:                data.unite_stock,
+        prix_vente:                 data.prix_vente,   // ✅ renommé
+        seuil_alerte:               Number(data.seuil_alerte),
+        conditions_stockage:        data.conditions_stockage,
+        indications_therapeutiques: data.indications_therapeutiques,
+        code_barres:                data.code_barres,
+        est_actif:                  true,
+        categorie:                  Number(data.categorie),
       };
+
       if (isEdit) {
         await medicamentService.update(Number(id), payload);
         toast.success('Médicament modifié avec succès !');
@@ -219,11 +224,14 @@ export default function MedicamentFormPage() {
       }
       setTimeout(() => navigate('/admin/inventaire'), 1500);
     } catch (err: any) {
-      toast.error(
-        err.response?.data?.code_barres?.[0] ||
-        err.response?.data?.non_field_errors?.[0] ||
-        "Erreur lors de l'enregistrement."
-      );
+      const errData = err.response?.data;
+      const msg =
+        errData?.prix_vente?.[0] ||
+        errData?.code_barres?.[0] ||
+        errData?.non_field_errors?.[0] ||
+        (typeof errData === 'object' ? JSON.stringify(errData) : null) ||
+        "Erreur lors de l'enregistrement.";
+      toast.error(msg);
     } finally { setLoading(false); }
   };
 
@@ -237,7 +245,7 @@ export default function MedicamentFormPage() {
     <Box sx={{ maxWidth: 920, mx: 'auto' }}>
       <Toaster position="top-right" />
 
-      {/* ── Header ── */}
+      {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <IconButton onClick={() => navigate('/admin/inventaire')}
           sx={{ bgcolor: '#E3F2FD', '&:hover': { bgcolor: '#BBDEFB' } }}>
@@ -251,25 +259,37 @@ export default function MedicamentFormPage() {
             {isEdit ? 'Modifier le médicament' : 'Fiche Médicament'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {isEdit ? 'Modifiez les informations du médicament.' : 'Saisissez les détails pour intégrer une nouvelle référence au stock.'}
+            {isEdit
+              ? 'Modifiez les informations du médicament.'
+              : 'Saisissez les détails pour intégrer une nouvelle référence au stock.'}
           </Typography>
         </Box>
         <Chip label={isEdit ? `ID: ${id}` : 'ID: NOUVEAU'}
           sx={{ bgcolor: '#E3F2FD', color: '#1565C0', fontWeight: 700 }} />
       </Box>
 
-      {doublonAlert && <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }} icon={<Warning />}>{doublonAlert}</Alert>}
-      {fetchingInfo && <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }} icon={<CircularProgress size={18} />}>Recherche d'informations...</Alert>}
+      {doublonAlert && (
+        <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }} icon={<Warning />}>
+          {doublonAlert}
+        </Alert>
+      )}
+      {fetchingInfo && (
+        <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }} icon={<CircularProgress size={18} />}>
+          Recherche d'informations...
+        </Alert>
+      )}
 
       <Box component="form" onSubmit={handleSubmit(onSubmit)}>
 
-        {/* ── Section 1 : Informations Générales ── */}
-        <Section icon={<Inventory2 sx={{ color: '#2196F3', fontSize: 20 }} />}
+        {/* Section 1 : Informations Générales */}
+        <Section
+          icon={<Inventory2 sx={{ color: '#2196F3', fontSize: 20 }} />}
           title="Informations Générales"
           subtitle="Détails d'identification du produit médical.">
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2.5 }}>
 
-            <Controller name="nom_commercial" control={control} rules={{ required: 'Nom commercial obligatoire' }}
+            <Controller name="nom_commercial" control={control}
+              rules={{ required: 'Nom commercial obligatoire' }}
               render={({ field }) => (
                 <TextField {...field} label="Nom Commercial *" placeholder="ex: Paracétamol 500mg"
                   error={!!errors.nom_commercial} helperText={errors.nom_commercial?.message}
@@ -320,7 +340,10 @@ export default function MedicamentFormPage() {
               )} />
 
             <Controller name="code_barres" control={control}
-              rules={{ required: 'Code-barres obligatoire', pattern: { value: /^[0-9]{8,14}$/, message: 'Code invalide (8-14 chiffres)' } }}
+              rules={{
+                required: 'Code-barres obligatoire',
+                pattern: { value: /^[0-9]{8,14}$/, message: 'Code invalide (8-14 chiffres)' },
+              }}
               render={({ field }) => (
                 <TextField
                   {...field}
@@ -345,7 +368,9 @@ export default function MedicamentFormPage() {
                 />
               )} />
 
-            <Controller name="prix_vente" control={control} rules={{ required: 'Prix de vente obligatoire' }}
+            {/* ✅ CORRIGÉ : prix_vente au lieu de prix_unitaire */}
+            <Controller name="prix_vente" control={control}
+              rules={{ required: 'Prix de vente obligatoire' }}
               render={({ field }) => (
                 <TextField
                   {...field}
@@ -355,23 +380,27 @@ export default function MedicamentFormPage() {
                   error={!!errors.prix_vente}
                   helperText={
                     errors.prix_vente?.message ||
-                    'Prix facturé au patient. Ne pas confondre avec le prix d\'achat fournisseur.'
+                    "Prix facturé au patient. Distinct du prix d'achat fournisseur."
                   }
-                  FormHelperTextProps={{ sx: { color: errors.prix_vente ? 'error.main' : '#607D8B', fontSize: 11 } }}
+                  FormHelperTextProps={{
+                    sx: { color: errors.prix_vente ? 'error.main' : '#607D8B', fontSize: 11 },
+                  }}
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                 />
               )} />
           </Box>
         </Section>
 
-        {/* ── Section 2 : Stock & Alertes ── */}
-        <Section icon={<Analytics sx={{ color: '#2196F3', fontSize: 20 }} />}
+        {/* Section 2 : Stock & Alertes */}
+        <Section
+          icon={<Analytics sx={{ color: '#2196F3', fontSize: 20 }} />}
           title="Stock & Niveaux d'Alerte"
           subtitle="Paramétrez les seuils critiques pour éviter les ruptures.">
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2.5 }}>
             <Controller name="seuil_alerte" control={control} rules={{ required: 'Seuil obligatoire' }}
               render={({ field }) => (
-                <TextField {...field} label="Seuil d'Alerte Critique *" type="number" placeholder="ex: 10"
+                <TextField {...field} label="Seuil d'Alerte Critique *" type="number"
+                  placeholder="ex: 10"
                   error={!!errors.seuil_alerte} helperText={errors.seuil_alerte?.message}
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
               )} />
@@ -384,17 +413,14 @@ export default function MedicamentFormPage() {
           </Box>
         </Section>
 
-        {/* ── Section 3 : Traçabilité & Logistique (NOUVEAU) ── */}
+        {/* Section 3 : Traçabilité (création uniquement) */}
         {!isEdit && (
           <Section
             icon={<LocalShipping sx={{ color: '#2E7D32', fontSize: 20 }} />}
             title="Traçabilité & Logistique"
             subtitle="Informations relatives aux lots et à l'approvisionnement."
-            accent="#2E7D32"
-          >
+            accent="#2E7D32">
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2.5 }}>
-
-              {/* Numéro de lot */}
               <Box>
                 <Controller name="numero_lot_initial" control={control}
                   render={({ field }) => (
@@ -413,7 +439,6 @@ export default function MedicamentFormPage() {
                 )}
               </Box>
 
-              {/* Date de péremption */}
               <Controller name="date_peremption_initiale" control={control}
                 render={({ field }) => (
                   <TextField {...field} label="Date d'Expiration" type="date"
@@ -421,7 +446,6 @@ export default function MedicamentFormPage() {
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                 )} />
 
-              {/* Fournisseur associé */}
               <Controller name="fournisseur_associe" control={control}
                 render={({ field }) => (
                   <FormControl fullWidth>
@@ -435,24 +459,23 @@ export default function MedicamentFormPage() {
                   </FormControl>
                 )} />
 
-              {/* Info box */}
               <Box sx={{
-                p: 2, bgcolor: '#F0FFF4', borderRadius: 2,
-                border: '1px solid #C8E6C9',
+                p: 2, bgcolor: '#F0FFF4', borderRadius: 2, border: '1px solid #C8E6C9',
                 display: 'flex', alignItems: 'flex-start', gap: 1,
               }}>
                 <Lightbulb sx={{ color: '#2E7D32', fontSize: 18, mt: 0.2 }} />
                 <Typography variant="caption" color="#388E3C">
                   Le numéro de lot et la date de péremption seront automatiquement associés
-                  au premier stock de ce médicament lors de la réception.
+                  au premier stock lors de la réception.
                 </Typography>
               </Box>
             </Box>
           </Section>
         )}
 
-        {/* ── Section 4 : Notes ── */}
-        <Section icon={<Notes sx={{ color: '#2196F3', fontSize: 20 }} />}
+        {/* Section 4 : Notes */}
+        <Section
+          icon={<Notes sx={{ color: '#2196F3', fontSize: 20 }} />}
           title="Notes & Observations"
           subtitle="Instructions spéciales ou précautions de stockage.">
           <Controller name="indications_therapeutiques" control={control}
@@ -463,10 +486,9 @@ export default function MedicamentFormPage() {
             )} />
         </Section>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <Card elevation={0} sx={{
-          border: '1px solid #E3F2FD', borderRadius: 3,
-          p: 2.5, bgcolor: '#F8FBFF',
+          border: '1px solid #E3F2FD', borderRadius: 3, p: 2.5, bgcolor: '#F8FBFF',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <Typography variant="caption" color="text.secondary">
@@ -490,7 +512,7 @@ export default function MedicamentFormPage() {
         </Card>
       </Box>
 
-      {/* ── Scanner ── */}
+      {/* Scanner */}
       {scanOpen && (
         <Box sx={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,

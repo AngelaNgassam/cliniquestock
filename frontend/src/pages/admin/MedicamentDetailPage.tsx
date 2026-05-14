@@ -11,15 +11,17 @@ import {
   ArrowBack, Edit, QrCode, LocalPharmacy, CheckCircle,
   Archive, Unarchive, Add, TrendingDown, TrendingUp,
   SwapHoriz, DeleteForever, BrokenImage, Science,
-  Inventory2, Warning, WarningAmber, Send,
-  Download,
+  Inventory2, Warning, WarningAmber, Send, Download,
 } from '@mui/icons-material';
 import api from '../../services/authService';
+import toast, { Toaster } from 'react-hot-toast';
 
+// ✅ CORRIGÉ : prix_vente au lieu de prix_unitaire
 interface Medicament {
   id: number; nom_commercial: string; dci: string;
   forme_galenique: string; dosage: string; unite_stock: string;
-  prix_unitaire: string; seuil_alerte: number;
+  prix_vente: string;           // ✅ renommé
+  seuil_alerte: number;
   conditions_stockage: string; indications_therapeutiques: string;
   code_barres: string; est_actif: boolean;
   categorie: number; categorie_nom: string;
@@ -37,8 +39,16 @@ interface Mouvement {
   numero_lot: string; numero_ordre?: string; patient_nom?: string;
 }
 
+// ── Format prix ───────────────────────────────────────────────────────────────
+const formatPrix = (prix: number | string): string => {
+  const n = Number(prix);
+  if (isNaN(n) || prix === '' || prix === null || prix === undefined) return '—';
+  return n.toLocaleString('fr-FR');
+};
+
 const TYPE_SORTIE_CONFIG: Record<string, {
-  label: string; color: string; bg: string; border: string; icon: React.ReactNode; description: string;
+  label: string; color: string; bg: string; border: string;
+  icon: React.ReactNode; description: string;
 }> = {
   DISPENSATION: {
     label: 'Dispensation', color: '#1565C0', bg: '#E3F2FD', border: '#90CAF9',
@@ -69,7 +79,9 @@ const MVT_STYLE: Record<string, { color: string; bg: string; icon: React.ReactNo
   TRANSFERT:  { color: '#6A1B9A', bg: '#F3E5F5', icon: <SwapHoriz   sx={{ fontSize: 16, color: '#6A1B9A' }} /> },
 };
 
-// ── Dialog Sortie de Stock ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Dialog Sortie Stock — ✅ liste des lots peuplée avec numéro + date péremption + quantité
+// ─────────────────────────────────────────────────────────────────────────────
 function SortieStockDialog({
   med, lots, open, onClose, onDone,
 }: {
@@ -89,27 +101,36 @@ function SortieStockDialog({
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState('');
 
+  // Reset quand on ouvre
+  useEffect(() => {
+    if (open) {
+      setTypeSortie('DISPENSATION'); setLotId(''); setQuantite(1);
+      setPatientNom(''); setPrescripteur(''); setOrdonnance('');
+      setDestination(''); setMotif(''); setCommentaire('');
+      setConfirme(false); setError('');
+    }
+  }, [open]);
+
   const config = TYPE_SORTIE_CONFIG[typeSortie];
-  const lotsDispos = lots.filter(l => l.statut === 'DISPONIBLE' && l.quantite_disponible > 0);
+
+  // ✅ Lots disponibles avec quantité > 0, triés FEFO (date péremption croissante)
+  const lotsDispos = lots
+    .filter(l => l.statut === 'DISPONIBLE' && l.quantite_disponible > 0)
+    .sort((a, b) => new Date(a.date_peremption).getTime() - new Date(b.date_peremption).getTime());
+
   const lotSelectionne = lotsDispos.find(l => l.id === lotId);
-  const needsConfirm = ['DESTRUCTION', 'CASSE'].includes(typeSortie);
+  const needsConfirm   = ['DESTRUCTION', 'CASSE'].includes(typeSortie);
 
   const handleSubmit = async () => {
     if (needsConfirm && !confirme) { setConfirme(true); return; }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const payload: any = {
-        medicament_id: med.id,
-        quantite,
-        commentaire,
-      };
-      if (lotId)        payload.lot_id        = lotId;
-      if (patientNom)   payload.patient_nom   = patientNom;
-      if (prescripteur) payload.prescripteur  = prescripteur;
+      const payload: any = { medicament_id: med.id, quantite, commentaire };
+      if (lotId)        payload.lot_id         = lotId;
+      if (patientNom)   payload.patient_nom    = patientNom;
+      if (prescripteur) payload.prescripteur   = prescripteur;
       if (ordonnance)   payload.num_ordonnance = ordonnance;
 
-      // Motif selon type
       const motifMap: Record<string, string> = {
         DISPENSATION: 'Dispensation',
         DESTRUCTION:  `Destruction — ${motif}`,
@@ -119,8 +140,8 @@ function SortieStockDialog({
       payload.commentaire = motifMap[typeSortie] + (commentaire ? ` | ${commentaire}` : '');
 
       await api.post('/sorties/', payload);
-      onDone();
-      onClose();
+      toast.success('Sortie enregistrée avec succès !');
+      onDone(); onClose();
     } catch (err: any) {
       setError(
         err.response?.data?.quantite?.[0] ||
@@ -130,9 +151,7 @@ function SortieStockDialog({
         'Erreur lors de la sortie.'
       );
       setConfirme(false);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
@@ -157,13 +176,14 @@ function SortieStockDialog({
       <DialogContent sx={{ pt: 2.5 }}>
         {confirme && (
           <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-            ⚠️ <strong>Opération irréversible.</strong> Une fois validée, cette sortie ne peut pas être annulée et impacte définitivement le stock.
+            ⚠️ <strong>Opération irréversible.</strong> Cette sortie impacte définitivement le stock.
           </Alert>
         )}
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
 
         {/* Type de sortie */}
-        <Typography fontWeight={700} fontSize={13} color="#546E7A" sx={{ mb: 1.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <Typography fontWeight={700} fontSize={13} color="#546E7A"
+          sx={{ mb: 1.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Type de sortie
         </Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 3 }}>
@@ -179,7 +199,8 @@ function SortieStockDialog({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {cfg.icon}
                 <Box>
-                  <Typography fontWeight={700} fontSize={12} color={typeSortie === val ? cfg.color : '#424242'}>
+                  <Typography fontWeight={700} fontSize={12}
+                    color={typeSortie === val ? cfg.color : '#424242'}>
                     {cfg.label}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
@@ -191,27 +212,59 @@ function SortieStockDialog({
           ))}
         </Box>
 
-        {/* Lot & Quantité */}
+        {/* ✅ Lot & Quantité — liste des lots avec numéro + date péremption + stock */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
           <FormControl size="small" fullWidth>
             <InputLabel>Lot (optionnel — FEFO auto)</InputLabel>
-            <Select value={lotId} label="Lot (optionnel — FEFO auto)"
+            <Select
+              value={lotId}
+              label="Lot (optionnel — FEFO auto)"
               onChange={e => setLotId(e.target.value as number)}
-              sx={{ borderRadius: 2 }}>
-              <MenuItem value="">Sélection automatique (FEFO)</MenuItem>
-              {lotsDispos.map(l => (
-                <MenuItem key={l.id} value={l.id}>
-                  {l.numero_lot} — {l.quantite_disponible} unités
-                  {l.proche_peremption && ' ⚠️'}
-                </MenuItem>
-              ))}
+              sx={{ borderRadius: 2 }}
+            >
+              <MenuItem value="">
+                <em>Sélection automatique (FEFO)</em>
+              </MenuItem>
+              {lotsDispos.length === 0 ? (
+                <MenuItem disabled>Aucun lot disponible</MenuItem>
+              ) : (
+                lotsDispos.map(l => {
+                  const datePerem = new Date(l.date_peremption).toLocaleDateString('fr-FR');
+                  const bientot   = (new Date(l.date_peremption).getTime() - Date.now()) / 86400000 < 90;
+                  return (
+                    <MenuItem key={l.id} value={l.id}>
+                      <Box>
+                        <Typography fontSize={13} fontWeight={700} color="#0D47A1">
+                          {l.numero_lot}
+                        </Typography>
+                        <Typography fontSize={11} color={bientot ? '#E65100' : 'text.secondary'}>
+                          {l.quantite_disponible} unités • exp. {datePerem}
+                          {bientot && ' ⚠️'}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  );
+                })
+              )}
             </Select>
           </FormControl>
-          <TextField label="Quantité *" type="number" size="small" value={quantite}
+
+          <TextField
+            label="Quantité *"
+            type="number"
+            size="small"
+            value={quantite}
             onChange={e => setQuantite(Number(e.target.value))}
             inputProps={{ min: 1, max: lotSelectionne?.quantite_disponible }}
-            helperText={lotSelectionne ? `Stock lot : ${lotSelectionne.quantite_disponible}` : ''}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            helperText={
+              lotSelectionne
+                ? `Stock du lot : ${lotSelectionne.quantite_disponible} unités`
+                : lotsDispos.length > 0
+                  ? `Stock total disponible : ${lotsDispos.reduce((s, l) => s + l.quantite_disponible, 0)} unités`
+                  : 'Aucun lot disponible'
+            }
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
         </Box>
 
         {/* Champs selon type */}
@@ -231,12 +284,15 @@ function SortieStockDialog({
 
         {typeSortie === 'TRANSFERT' && (
           <TextField label="Destination (unité ou clinique) *" size="small" fullWidth value={destination}
-            onChange={e => setDestination(e.target.value)} sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            onChange={e => setDestination(e.target.value)}
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         )}
 
         {['DESTRUCTION', 'CASSE'].includes(typeSortie) && (
-          <TextField label={typeSortie === 'DESTRUCTION' ? 'Motif de destruction *' : 'Description de l\'incident *'}
-            size="small" fullWidth value={motif} onChange={e => setMotif(e.target.value)}
+          <TextField
+            label={typeSortie === 'DESTRUCTION' ? 'Motif de destruction *' : 'Description de l\'incident *'}
+            size="small" fullWidth value={motif}
+            onChange={e => setMotif(e.target.value)}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
         )}
 
@@ -256,7 +312,8 @@ function SortieStockDialog({
             bgcolor: confirme ? '#C62828' : config.color,
             '&:hover': { bgcolor: confirme ? '#B71C1C' : config.color },
           }}>
-          {loading ? <CircularProgress size={18} color="inherit" />
+          {loading
+            ? <CircularProgress size={18} color="inherit" />
             : confirme ? '⚠️ Confirmer définitivement'
             : needsConfirm ? 'Suivant — Confirmer'
             : 'Enregistrer la sortie'}
@@ -266,7 +323,9 @@ function SortieStockDialog({
   );
 }
 
-// ── Page principale ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Page principale MedicamentDetailPage
+// ─────────────────────────────────────────────────────────────────────────────
 export default function MedicamentDetailPage() {
   const { id }      = useParams<{ id: string }>();
   const navigate    = useNavigate();
@@ -281,19 +340,38 @@ export default function MedicamentDetailPage() {
   const fetchAll = async () => {
     if (!id) return;
     try {
+      // ✅ Charger en parallèle — stock peut retourner 404 si aucun lot
       const [medRes, lotRes, mvtRes] = await Promise.all([
         api.get(`/medicaments/${id}/`),
-        api.get(`/stock/${id}/`).catch(() => ({ data: { lots: [] } })),
+        api.get(`/stock/${id}/`).catch(() => ({ data: { lots: [] } })),  // ✅ 404 → lots vides
         api.get(`/mouvements/?medicament_id=${id}`).catch(() => ({ data: [] })),
       ]);
-      setMed(medRes.data);
-      const lotsData: LotStock[] = lotRes.data.lots || [];
+
+      const medData: Medicament = medRes.data;
+      setMed(medData);
+
+      // ✅ Récupérer les lots depuis /stock/{id}/ ou fallback sur stock_actuel du médicament
+      const lotsData: LotStock[] = lotRes.data?.lots || [];
       setLots(lotsData);
-      setStockTotal(lotsData.filter(l => l.statut === 'DISPONIBLE').reduce((s, l) => s + l.quantite_disponible, 0));
+
+      // ✅ Stock total = somme des lots disponibles (ou stock_actuel du serializer si aucun lot)
+      const stockDispo = lotsData
+        .filter(l => l.statut === 'DISPONIBLE')
+        .reduce((s, l) => s + l.quantite_disponible, 0);
+
+      // Si l'API /stock/ retourne 404 (pas encore de lot), utiliser stock_actuel du médicament
+      const stockFallback = (medData as any).stock_actuel ?? 0;
+      setStockTotal(lotsData.length > 0 ? stockDispo : stockFallback);
+
       const mvtData = mvtRes.data;
       setMvts(Array.isArray(mvtData) ? mvtData : mvtData.results ?? []);
+
     } catch (err: any) {
-      setError(err.response?.status === 404 ? 'Médicament introuvable.' : 'Erreur lors du chargement.');
+      setError(
+        err.response?.status === 404
+          ? 'Médicament introuvable.'
+          : 'Erreur lors du chargement.'
+      );
     } finally {
       setLoading(false);
     }
@@ -303,7 +381,9 @@ export default function MedicamentDetailPage() {
 
   const handleToggle = async () => {
     if (!med) return;
-    if (!confirm(med.est_actif ? `Archiver "${med.nom_commercial}" ?` : `Désarchiver "${med.nom_commercial}" ?`)) return;
+    if (!confirm(med.est_actif
+      ? `Archiver "${med.nom_commercial}" ?`
+      : `Désarchiver "${med.nom_commercial}" ?`)) return;
     await api.post(`/medicaments/${med.id}/${med.est_actif ? 'archiver' : 'restaurer'}/`);
     fetchAll();
   };
@@ -316,19 +396,22 @@ export default function MedicamentDetailPage() {
   if (error || !med) return (
     <Box sx={{ p: 4, textAlign: 'center' }}>
       <Typography color="error">{error || 'Médicament introuvable.'}</Typography>
-      <Button sx={{ mt: 2 }} onClick={() => navigate('/admin/inventaire')} startIcon={<ArrowBack />}>Retour</Button>
+      <Button sx={{ mt: 2 }} onClick={() => navigate('/admin/inventaire')} startIcon={<ArrowBack />}>
+        Retour
+      </Button>
     </Box>
   );
 
-  const en_alerte = stockTotal !== null && stockTotal <= med.seuil_alerte;
-  const lotsDispo = lots.filter(l => l.statut === 'DISPONIBLE');
+  const en_alerte       = stockTotal !== null && stockTotal <= med.seuil_alerte;
+  const lotsDispo       = lots.filter(l => l.statut === 'DISPONIBLE');
   const lotsQuarantaine = lots.filter(l => l.statut === 'QUARANTAINE');
-  const lotsExpires = lots.filter(l => l.expire);
+  const lotsExpires     = lots.filter(l => l.expire);
 
   return (
     <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
+      <Toaster position="top-right" />
 
-      {/* ── Header ── */}
+      {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 3 }}>
         <IconButton onClick={() => navigate('/admin/inventaire')}
           sx={{ bgcolor: '#E3F2FD', '&:hover': { bgcolor: '#BBDEFB' }, mt: 0.5 }}>
@@ -343,13 +426,16 @@ export default function MedicamentDetailPage() {
               {med.nom_commercial}
             </Typography>
             {en_alerte && (
-              <Chip icon={<Warning sx={{ fontSize: 14 }} />} label="Stock Faible"
-                size="small" sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontWeight: 700, border: '1px solid #FFB300' }} />
+              <Chip icon={<Warning sx={{ fontSize: 14 }} />} label="Stock Faible" size="small"
+                sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontWeight: 700, border: '1px solid #FFB300' }} />
             )}
-            <Chip label={med.est_actif ? 'Actif' : 'Archivé'} size="small"
+            <Chip
+              label={med.est_actif ? 'Actif' : 'Archivé'} size="small"
               icon={med.est_actif ? <CheckCircle sx={{ fontSize: 14 }} /> : <Archive sx={{ fontSize: 14 }} />}
-              sx={{ bgcolor: med.est_actif ? '#E8F5E9' : '#ECEFF1',
-                color: med.est_actif ? '#2E7D32' : '#607D8B', fontWeight: 700 }} />
+              sx={{
+                bgcolor: med.est_actif ? '#E8F5E9' : '#ECEFF1',
+                color:   med.est_actif ? '#2E7D32' : '#607D8B', fontWeight: 700,
+              }} />
           </Box>
           <Typography variant="body2" color="text.secondary">
             {med.dci} • {med.forme_galenique} • {med.dosage} • {med.categorie_nom}
@@ -382,16 +468,22 @@ export default function MedicamentDetailPage() {
 
       {/* ── KPIs stock ── */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+
+        {/* Stock Actuel */}
         <Card elevation={0} sx={{
           p: 2.5, borderRadius: 3, flex: 1, minWidth: 160,
           border: en_alerte ? '1px solid #FFB300' : '1px solid #C8E6C9',
-          background: en_alerte ? 'linear-gradient(135deg, white, #FFF8E1)' : 'linear-gradient(135deg, white, #F1F8E9)',
+          background: en_alerte
+            ? 'linear-gradient(135deg, white, #FFF8E1)'
+            : 'linear-gradient(135deg, white, #F1F8E9)',
         }}>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" fontSize={10}>
+          <Typography variant="caption" color="text.secondary" fontWeight={600}
+            textTransform="uppercase" fontSize={10}>
             Stock Actuel
           </Typography>
           <Typography variant="h3" fontWeight={900}
-            color={en_alerte ? '#E65100' : '#2E7D32'} sx={{ lineHeight: 1.1, my: 0.5 }}>
+            color={en_alerte ? '#E65100' : '#2E7D32'}
+            sx={{ lineHeight: 1.1, my: 0.5 }}>
             {stockTotal ?? '—'}
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -399,28 +491,56 @@ export default function MedicamentDetailPage() {
           </Typography>
           {en_alerte && (
             <Chip icon={<WarningAmber sx={{ fontSize: 12 }} />} label="En alerte"
-              size="small" sx={{ ml: 0, mt: 0.5, bgcolor: '#FFF3E0', color: '#E65100', fontSize: 10 }} />
+              size="small"
+              sx={{ ml: 0, mt: 0.5, bgcolor: '#FFF3E0', color: '#E65100', fontSize: 10 }} />
           )}
         </Card>
+
+        {/* Lots Disponibles */}
         <Card elevation={0} sx={{ p: 2.5, borderRadius: 3, flex: 1, minWidth: 130, border: '1px solid #E3F2FD' }}>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" fontSize={10}>Lots Disponibles</Typography>
-          <Typography variant="h3" fontWeight={900} color="#1565C0" sx={{ lineHeight: 1.1, my: 0.5 }}>{lotsDispo.length}</Typography>
+          <Typography variant="caption" color="text.secondary" fontWeight={600}
+            textTransform="uppercase" fontSize={10}>
+            Lots Disponibles
+          </Typography>
+          {/* ✅ Affiche le nb réel de lots disponibles */}
+          <Typography variant="h3" fontWeight={900} color="#1565C0" sx={{ lineHeight: 1.1, my: 0.5 }}>
+            {lotsDispo.length}
+          </Typography>
           <Typography variant="caption" color="text.secondary">numéros de lot</Typography>
         </Card>
+
+        {/* Quarantaine */}
         <Card elevation={0} sx={{ p: 2.5, borderRadius: 3, flex: 1, minWidth: 130, border: '1px solid #F3E5F5' }}>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" fontSize={10}>Quarantaine</Typography>
-          <Typography variant="h3" fontWeight={900} color="#6A1B9A" sx={{ lineHeight: 1.1, my: 0.5 }}>{lotsQuarantaine.length}</Typography>
+          <Typography variant="caption" color="text.secondary" fontWeight={600}
+            textTransform="uppercase" fontSize={10}>
+            Quarantaine
+          </Typography>
+          <Typography variant="h3" fontWeight={900} color="#6A1B9A" sx={{ lineHeight: 1.1, my: 0.5 }}>
+            {lotsQuarantaine.length}
+          </Typography>
           <Typography variant="caption" color="text.secondary">lots bloqués</Typography>
         </Card>
+
+        {/* Expirés */}
         <Card elevation={0} sx={{ p: 2.5, borderRadius: 3, flex: 1, minWidth: 130, border: '1px solid #FFEBEE' }}>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" fontSize={10}>Expirés</Typography>
-          <Typography variant="h3" fontWeight={900} color="#C62828" sx={{ lineHeight: 1.1, my: 0.5 }}>{lotsExpires.length}</Typography>
+          <Typography variant="caption" color="text.secondary" fontWeight={600}
+            textTransform="uppercase" fontSize={10}>
+            Expirés
+          </Typography>
+          <Typography variant="h3" fontWeight={900} color="#C62828" sx={{ lineHeight: 1.1, my: 0.5 }}>
+            {lotsExpires.length}
+          </Typography>
           <Typography variant="caption" color="text.secondary">lots périmés</Typography>
         </Card>
+
+        {/* ✅ CORRIGÉ : Prix de Vente (plus NaN) */}
         <Card elevation={0} sx={{ p: 2.5, borderRadius: 3, flex: 1.5, minWidth: 160, border: '1px solid #E3F2FD' }}>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" fontSize={10}>Prix Unitaire</Typography>
+          <Typography variant="caption" color="text.secondary" fontWeight={600}
+            textTransform="uppercase" fontSize={10}>
+            Prix de Vente
+          </Typography>
           <Typography variant="h4" fontWeight={900} color="#1565C0" sx={{ lineHeight: 1.1, my: 0.5 }}>
-            {Number(med.prix_unitaire).toLocaleString()}
+            {formatPrix(med.prix_vente)}
           </Typography>
           <Typography variant="caption" color="text.secondary">FCFA</Typography>
         </Card>
@@ -432,20 +552,23 @@ export default function MedicamentDetailPage() {
         {/* Informations techniques */}
         <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
-            <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: '#E3F2FD', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: '#E3F2FD',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Inventory2 sx={{ color: '#1565C0', fontSize: 18 }} />
             </Box>
             <Typography fontWeight={700} color="#0D47A1">Informations Techniques</Typography>
           </Box>
           <Divider sx={{ mb: 2 }} />
           {[
-            ['Code-barres', med.code_barres],
-            ['Unité de stock', med.unite_stock],
+            ['Code-barres',          med.code_barres || '—'],
+            ['Unité de stock',       med.unite_stock],
             ['Conditions de stockage', med.conditions_stockage || '—'],
-            ['Seuil d\'alerte', `${med.seuil_alerte} unités`],
+            ['Seuil d\'alerte',      `${med.seuil_alerte} unités`],
           ].map(([label, val]) => (
-            <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: '1px solid #F5F5F5' }}>
-              <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" fontSize={10}>
+            <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between',
+              py: 1, borderBottom: '1px solid #F5F5F5' }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}
+                textTransform="uppercase" fontSize={10}>
                 {label}
               </Typography>
               <Typography fontSize={13} fontWeight={500} color="#1A1A2E">{val}</Typography>
@@ -453,10 +576,11 @@ export default function MedicamentDetailPage() {
           ))}
         </Card>
 
-        {/* Fournisseur & Notes */}
+        {/* Note clinique */}
         <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
-            <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: '#E8F5E9',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <LocalPharmacy sx={{ color: '#2E7D32', fontSize: 18 }} />
             </Box>
             <Typography fontWeight={700} color="#0D47A1">Note Clinique</Typography>
@@ -473,13 +597,13 @@ export default function MedicamentDetailPage() {
               </Box>
               <Typography fontSize={12} color="#795548">
                 Le niveau de stock actuel ({stockTotal}) est passé sous le seuil critique de {med.seuil_alerte}.
-                Une commande de réapprovisionnement est suggérée immédiatement.
               </Typography>
-              <Button size="small" variant="contained" startIcon={<Send sx={{ fontSize: 14 }} />}
+              <Button size="small" variant="contained"
+                startIcon={<Send sx={{ fontSize: 14 }} />}
                 onClick={() => navigate('/admin/commandes')}
                 sx={{ mt: 1.5, borderRadius: 1.5, textTransform: 'none', fontSize: 12,
                   bgcolor: '#E65100', '&:hover': { bgcolor: '#BF360C' } }}>
-                Lancer commande automatique
+                Lancer une commande
               </Button>
             </Box>
           )}
@@ -487,22 +611,35 @@ export default function MedicamentDetailPage() {
       </Box>
 
       {/* ── Lots de stock ── */}
-      {lots.length > 0 && (
-        <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, mb: 3, overflow: 'hidden' }}>
-          <Box sx={{ px: 3, py: 2, bgcolor: '#F0F7FF', borderBottom: '1px solid #BBDEFB',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <QrCode sx={{ color: '#1565C0', fontSize: 18 }} />
-              <Typography fontWeight={700} color="#0D47A1">Numéro de lot actuel</Typography>
-            </Box>
-            <Typography variant="caption" color="text.secondary">{lots.length} lot(s)</Typography>
+      {/* ✅ Afficher la section même si lots = [] pour ne pas laisser l'utilisateur sans info */}
+      <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, mb: 3, overflow: 'hidden' }}>
+        <Box sx={{ px: 3, py: 2, bgcolor: '#F0F7FF', borderBottom: '1px solid #BBDEFB',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <QrCode sx={{ color: '#1565C0', fontSize: 18 }} />
+            <Typography fontWeight={700} color="#0D47A1">Lots de stock</Typography>
           </Box>
+          <Typography variant="caption" color="text.secondary">
+            {lots.length} lot(s) enregistré(s)
+          </Typography>
+        </Box>
+
+        {lots.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="text.secondary" fontSize={13}>
+              Aucun lot enregistré pour ce médicament. Les lots sont créés lors des réceptions de commande.
+            </Typography>
+          </Box>
+        ) : (
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: '#FAFAFA' }}>
                   {['N° de Lot', 'Date d\'expiration', 'Qté disponible', 'Prix achat', 'Statut'].map(h => (
-                    <TableCell key={h} sx={{ fontSize: 11, fontWeight: 700, color: '#546E7A', textTransform: 'uppercase' }}>{h}</TableCell>
+                    <TableCell key={h} sx={{ fontSize: 11, fontWeight: 700,
+                      color: '#546E7A', textTransform: 'uppercase' }}>
+                      {h}
+                    </TableCell>
                   ))}
                 </TableRow>
               </TableHead>
@@ -532,12 +669,12 @@ export default function MedicamentDetailPage() {
                     <TableCell>
                       <Chip label={lot.statut} size="small"
                         sx={{
-                          bgcolor: lot.statut === 'DISPONIBLE' ? '#E8F5E9'
+                          bgcolor: lot.statut === 'DISPONIBLE'  ? '#E8F5E9'
                             : lot.statut === 'QUARANTAINE' ? '#F3E5F5'
-                            : lot.statut === 'EPUISE' ? '#ECEFF1' : '#FFEBEE',
-                          color: lot.statut === 'DISPONIBLE' ? '#2E7D32'
+                            : lot.statut === 'EPUISE'      ? '#ECEFF1' : '#FFEBEE',
+                          color: lot.statut === 'DISPONIBLE'  ? '#2E7D32'
                             : lot.statut === 'QUARANTAINE' ? '#6A1B9A'
-                            : lot.statut === 'EPUISE' ? '#607D8B' : '#C62828',
+                            : lot.statut === 'EPUISE'      ? '#607D8B' : '#C62828',
                           fontWeight: 700, fontSize: 11,
                         }} />
                     </TableCell>
@@ -546,8 +683,8 @@ export default function MedicamentDetailPage() {
               </TableBody>
             </Table>
           </TableContainer>
-        </Card>
-      )}
+        )}
+      </Card>
 
       {/* ── Historique des mouvements ── */}
       <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, overflow: 'hidden' }}>
@@ -557,11 +694,12 @@ export default function MedicamentDetailPage() {
             <TrendingDown sx={{ color: '#1565C0', fontSize: 18 }} />
             <Typography fontWeight={700} color="#0D47A1">Historique des mouvements</Typography>
             <Typography variant="caption" color="text.secondary">
-              Suivi complet des entrées, sorties et ajustements de stock.
+              Entrées, sorties et ajustements.
             </Typography>
           </Box>
           <Button size="small" variant="outlined" startIcon={<Download sx={{ fontSize: 14 }} />}
-            sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9', color: '#1565C0', fontSize: 12 }}>
+            sx={{ borderRadius: 2, textTransform: 'none', borderColor: '#90CAF9',
+              color: '#1565C0', fontSize: 12 }}>
             Exporter (PDF)
           </Button>
         </Box>
@@ -576,13 +714,16 @@ export default function MedicamentDetailPage() {
               <TableHead>
                 <TableRow sx={{ bgcolor: '#FAFAFA' }}>
                   {['Date', 'Type', 'Quantité', 'Raison', 'Utilisateur'].map(h => (
-                    <TableCell key={h} sx={{ fontSize: 11, fontWeight: 700, color: '#546E7A', textTransform: 'uppercase' }}>{h}</TableCell>
+                    <TableCell key={h} sx={{ fontSize: 11, fontWeight: 700,
+                      color: '#546E7A', textTransform: 'uppercase' }}>
+                      {h}
+                    </TableCell>
                   ))}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {mvts.slice(0, 15).map(mvt => {
-                  const style = MVT_STYLE[mvt.type_mouvement] || MVT_STYLE.AJUSTEMENT;
+                  const style   = MVT_STYLE[mvt.type_mouvement] || MVT_STYLE.AJUSTEMENT;
                   const isEntree = mvt.type_mouvement === 'ENTREE';
                   return (
                     <TableRow key={mvt.id} sx={{ '&:hover': { bgcolor: '#F8FBFF' } }}>
@@ -591,16 +732,14 @@ export default function MedicamentDetailPage() {
                           {new Date(mvt.date_operation).toLocaleDateString('fr-FR')}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {new Date(mvt.date_operation).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(mvt.date_operation).toLocaleTimeString('fr-FR', {
+                            hour: '2-digit', minute: '2-digit',
+                          })}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          icon={style.icon as any}
-                          label={mvt.type_mouvement}
-                          size="small"
-                          sx={{ bgcolor: style.bg, color: style.color, fontWeight: 700, fontSize: 10 }}
-                        />
+                        <Chip icon={style.icon as any} label={mvt.type_mouvement} size="small"
+                          sx={{ bgcolor: style.bg, color: style.color, fontWeight: 700, fontSize: 10 }} />
                       </TableCell>
                       <TableCell>
                         <Typography fontWeight={800} fontSize={14}
@@ -628,10 +767,11 @@ export default function MedicamentDetailPage() {
         )}
       </Card>
 
-      {/* Dialog sortie stock */}
+      {/* Dialog sortie */}
       {med && (
         <SortieStockDialog
-          med={med} lots={lots}
+          med={med}
+          lots={lots}
           open={sortieOpen}
           onClose={() => setSortieOpen(false)}
           onDone={() => { setSortieOpen(false); fetchAll(); }}

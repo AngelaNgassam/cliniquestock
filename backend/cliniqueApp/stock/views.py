@@ -1,10 +1,13 @@
-from django.utils import timezone  # ✅ CORRECTION ICI
+from datetime import timedelta
+
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum, F
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from cliniqueApp.users.permissions import EstAdmin, EstAdminOuPharmacien
 from .models import Inventaire, Reception, LotStock, MouvementStock
@@ -81,18 +84,78 @@ class ReceptionViewSet(viewsets.ModelViewSet):
         })
 
 
+# ✅ NOUVELLE VUE — remplace le retrieve() du StockViewSet qui retournait 404
+class StockMedicamentView(APIView):
+    """
+    GET /api/v1/stock/{medicament_id}/
+    Retourne tous les lots d'un médicament, triés par date de péremption (FEFO).
+    Utilisé par MedicamentDetailPage pour les KPIs et le dropdown de sortie.
+    """
+    permission_classes = [EstAdminOuPharmacien]
+
+    def get(self, request, medicament_id):
+        from cliniqueApp.medicaments.models import Medicament
+
+        try:
+            med = Medicament.objects.get(pk=medicament_id)
+        except Medicament.DoesNotExist:
+            return Response({'error': 'Médicament introuvable.'}, status=404)
+
+        # Tous les lots du médicament, triés FEFO
+        lots_qs = LotStock.objects.filter(
+            medicament=med
+        ).order_by('date_peremption')
+
+        aujourd_hui   = timezone.now().date()
+        dans_90_jours = aujourd_hui + timedelta(days=90)
+
+        lots_data = []
+        for lot in lots_qs:
+            expire            = bool(lot.date_peremption and lot.date_peremption < aujourd_hui)
+            proche_peremption = bool(
+                lot.date_peremption and
+                aujourd_hui <= lot.date_peremption <= dans_90_jours
+            )
+            lots_data.append({
+                'id':                   lot.id,
+                'numero_lot':           lot.numero_lot,
+                'date_peremption':      lot.date_peremption,
+                'quantite_disponible':  lot.quantite_disponible,
+                'quantite_quarantaine': lot.quantite_quarantaine,
+                'prix_achat':           float(lot.prix_achat) if lot.prix_achat else 0,
+                'statut':               lot.statut,
+                'expire':               expire,
+                'proche_peremption':    proche_peremption,
+            })
+
+        # Stock total = somme des lots DISPONIBLES uniquement
+        stock_total = sum(
+            l['quantite_disponible']
+            for l in lots_data
+            if l['statut'] == 'DISPONIBLE'
+        )
+
+        return Response({
+            'lots':        lots_data,
+            'stock_total': stock_total,
+        })
+
+
 class StockViewSet(viewsets.ViewSet):
     permission_classes = [EstAdminOuPharmacien]
 
     def list(self, request):
+        """GET /stock/ — résumé de stock pour tous les médicaments actifs."""
         from cliniqueApp.medicaments.models import Medicament
         medicaments = Medicament.objects.filter(est_actif=True)
 
         stock_data = []
         for med in medicaments:
-            lots = med.lots.filter(statut=LotStock.Statut.DISPONIBLE)
+            lots            = med.lots.filter(statut=LotStock.Statut.DISPONIBLE)
             quantite_totale = lots.aggregate(total=Sum('quantite_disponible'))['total'] or 0
-            valeur = lots.aggregate(val=Sum(F('quantite_disponible') * F('prix_achat')))['val'] or 0
+            valeur          = lots.aggregate(
+                val=Sum(F('quantite_disponible') * F('prix_achat'))
+            )['val'] or 0
             stock_data.append({
                 'medicament_id':   med.id,
                 'nom_commercial':  med.nom_commercial,
@@ -106,56 +169,7 @@ class StockViewSet(viewsets.ViewSet):
             })
         return Response(stock_data)
 
-    def retrieve(self, request, pk=None):
-        """GET /inventaires/{id}/ — retourne les lignes depuis BDD si disponibles"""
-        try:
-            inv = Inventaire.objects.get(pk=pk)
-        except Inventaire.DoesNotExist:
-            return Response({'error': 'Inventaire introuvable.'}, status=404)
-
-        from cliniqueApp.medicaments.models import Medicament
-        from .models import LigneInventaire
-
-        lignes_bdd = LigneInventaire.objects.filter(
-            inventaire=inv
-        ).select_related('medicament').order_by('medicament__nom_commercial')
-
-        if lignes_bdd.exists():
-            #  Utiliser les données BDD (quantités saisies)
-            lignes = [{
-                'medicament_id':      l.medicament.id,
-                'medicament_nom':     l.medicament.nom_commercial,
-                'dci':                l.medicament.dci,
-                'quantite_theorique': l.quantite_theorique,
-                'quantite_physique':  l.quantite_physique,
-                'ecart':              l.ecart,
-                'justification':      l.justification,
-            } for l in lignes_bdd]
-        else:
-            # Inventaire en cours sans saisie → stock actuel
-            lignes = []
-            for med in Medicament.objects.filter(est_actif=True).order_by('nom_commercial'):
-                stock = LotStock.objects.filter(
-                    medicament=med, statut='DISPONIBLE'
-                ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
-                lignes.append({
-                    'medicament_id':      med.id,
-                    'medicament_nom':     med.nom_commercial,
-                    'dci':                med.dci,
-                    'quantite_theorique': stock,
-                    'quantite_physique':  None,
-                    'ecart':              None,
-                    'justification':      '',
-                })
-
-        return Response({
-            'id':         inv.id,
-            'date_debut': inv.date_debut,
-            'date_fin':   inv.date_fin,
-            'statut':     inv.statut,
-            'initie_par': inv.initie_par.nom if inv.initie_par else '—',
-            'lignes':     lignes,
-        })
+    # ✅ retrieve() supprimé — remplacé par StockMedicamentView
 
 
 class MouvementViewSet(viewsets.ViewSet):
@@ -234,14 +248,13 @@ class DashboardViewSet(viewsets.ViewSet):
         from cliniqueApp.medicaments.models import Medicament, Categorie
         from cliniqueApp.commandes.models import Commande
         from cliniqueApp.alertes.models import Alerte
-        from datetime import timedelta
 
         today = timezone.now().date()
         user  = request.user
 
         total_medicaments = Medicament.objects.filter(est_actif=True).count()
 
-        ruptures = 0
+        ruptures     = 0
         stock_faible = 0
         for med in Medicament.objects.filter(est_actif=True):
             stock = LotStock.objects.filter(
@@ -266,7 +279,9 @@ class DashboardViewSet(viewsets.ViewSet):
             val=Sum(F('quantite_disponible') * F('prix_achat'))
         )['val'] or 0
 
-        alertes_actives = Alerte.objects.filter(destinataire=user, est_lue=False).count()
+        alertes_actives = Alerte.objects.filter(
+            destinataire=user, est_lue=False
+        ).count()
 
         mouvements_data = []
         mois_noms = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
@@ -300,8 +315,10 @@ class DashboardViewSet(viewsets.ViewSet):
         for cat in Categorie.objects.all():
             valeur = 0
             for med in Medicament.objects.filter(categorie=cat, est_actif=True):
-                lots = LotStock.objects.filter(medicament=med, statut='DISPONIBLE')
-                valeur += lots.aggregate(val=Sum(F('quantite_disponible') * F('prix_achat')))['val'] or 0
+                lots   = LotStock.objects.filter(medicament=med, statut='DISPONIBLE')
+                valeur += lots.aggregate(
+                    val=Sum(F('quantite_disponible') * F('prix_achat'))
+                )['val'] or 0
             if valeur > 0:
                 valeur_par_categorie.append({'categorie': cat.nom, 'valeur': float(valeur)})
 
@@ -322,9 +339,11 @@ class DashboardViewSet(viewsets.ViewSet):
             .values('id', 'type_alerte', 'niveau_urgence', 'message', 'date_creation',
                     'destinataire__nom', 'destinataire__prenom')
         )
-        # Ajouter destinataire_nom
         for a in alertes_recentes:
-            a['destinataire_nom'] = f"{a.pop('destinataire__prenom', '')} {a.pop('destinataire__nom', '')}".strip() or 'Système'
+            a['destinataire_nom'] = (
+                f"{a.pop('destinataire__prenom', '')} {a.pop('destinataire__nom', '')}".strip()
+                or 'Système'
+            )
 
         return Response({
             'kpis': {
@@ -349,14 +368,17 @@ class InventaireViewSet(viewsets.ViewSet):
     permission_classes = [EstAdminOuPharmacien]
 
     def create(self, request):
-        """POST /inventaires/ — initier"""
+        """POST /inventaires/ — initier un inventaire"""
         if request.user.role != 'ADMINISTRATEUR':
             return Response({'error': 'Admin uniquement.'}, status=403)
 
         en_cours = Inventaire.objects.filter(statut=Inventaire.Statut.EN_COURS).first()
         if en_cours:
             return Response({
-                'error': f'Un inventaire est déjà en cours (#{en_cours.id}). Clôturez-le avant d\'en initier un nouveau.',
+                'error': (
+                    f'Un inventaire est déjà en cours (#{en_cours.id}). '
+                    f'Clôturez-le avant d\'en initier un nouveau.'
+                ),
             }, status=400)
 
         inventaire = Inventaire.objects.create(
@@ -372,7 +394,7 @@ class InventaireViewSet(viewsets.ViewSet):
         }, status=201)
 
     def list(self, request):
-        """GET /inventaires/ — liste"""
+        """GET /inventaires/"""
         inventaires = Inventaire.objects.all().select_related('initie_par')
         return Response([{
             'id':             inv.id,
@@ -384,7 +406,7 @@ class InventaireViewSet(viewsets.ViewSet):
         } for inv in inventaires])
 
     def retrieve(self, request, pk=None):
-        """GET /inventaires/{id}/ — retourne les lignes sauvegardées si disponibles"""
+        """GET /inventaires/{id}/ — retourne les lignes sauvegardées"""
         try:
             inv = Inventaire.objects.get(pk=pk)
         except Inventaire.DoesNotExist:
@@ -393,7 +415,6 @@ class InventaireViewSet(viewsets.ViewSet):
         from cliniqueApp.medicaments.models import Medicament
         from .models import LigneInventaire
 
-        # Si l'inventaire a des lignes sauvegardées → les utiliser
         lignes_bdd = LigneInventaire.objects.filter(
             inventaire=inv
         ).select_related('medicament').order_by('medicament__nom_commercial')
@@ -409,7 +430,6 @@ class InventaireViewSet(viewsets.ViewSet):
                 'justification':      l.justification,
             } for l in lignes_bdd]
         else:
-            # Inventaire en cours sans saisie → stock actuel
             lignes = []
             for med in Medicament.objects.filter(est_actif=True).order_by('nom_commercial'):
                 stock = LotStock.objects.filter(
@@ -436,7 +456,7 @@ class InventaireViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=['post'], url_path='lignes')
     def saisir_lignes(self, request, pk=None):
-        """POST /inventaires/{id}/lignes/ — sauvegarder en BDD"""
+        """POST /inventaires/{id}/lignes/"""
         try:
             inv = Inventaire.objects.get(pk=pk, statut='EN_COURS')
         except Inventaire.DoesNotExist:
@@ -464,7 +484,6 @@ class InventaireViewSet(viewsets.ViewSet):
                     'error': f'Justification obligatoire pour {med.nom_commercial} (écart : {ecart}).'
                 }, status=400)
 
-            # Persister en BDD
             LigneInventaire.objects.update_or_create(
                 inventaire=inv,
                 medicament=med,
@@ -475,7 +494,6 @@ class InventaireViewSet(viewsets.ViewSet):
                     'justification':      justification,
                 }
             )
-
             resultats.append({
                 'medicament_id':      med.id,
                 'medicament_nom':     med.nom_commercial,
@@ -492,7 +510,7 @@ class InventaireViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
-        """POST /inventaires/{id}/valider/ — valide ET persiste les lignes"""
+        """POST /inventaires/{id}/valider/"""
         try:
             inv = Inventaire.objects.get(pk=pk)
         except Inventaire.DoesNotExist:
@@ -511,12 +529,9 @@ class InventaireViewSet(viewsets.ViewSet):
         try:
             with transaction.atomic():
                 for ligne in request.data.get('lignes', []):
-                    ecart = ligne.get('ecart', 0)
-                    if ecart is None:
-                        ecart = 0
-
-                    med_id       = ligne.get('medicament_id')
-                    qte_physique = int(ligne.get('quantite_physique', 0))
+                    ecart         = ligne.get('ecart', 0) or 0
+                    med_id        = ligne.get('medicament_id')
+                    qte_physique  = int(ligne.get('quantite_physique', 0))
                     justification = ligne.get('justification', '')
 
                     if not med_id:
@@ -531,7 +546,6 @@ class InventaireViewSet(viewsets.ViewSet):
                         medicament=med, statut='DISPONIBLE'
                     ).aggregate(total=Sum('quantite_disponible'))['total'] or 0
 
-                    #  Toujours persister la LigneInventaire (même écart nul)
                     LigneInventaire.objects.update_or_create(
                         inventaire=inv,
                         medicament=med,
@@ -546,9 +560,8 @@ class InventaireViewSet(viewsets.ViewSet):
                     if int(ecart) == 0:
                         continue
 
-                    # Régulariser le stock
                     lots = LotStock.objects.filter(
-                        medicament=med,
+                        medicament=med
                     ).order_by('-quantite_disponible')
 
                     if lots.exists():
@@ -588,7 +601,6 @@ class InventaireViewSet(viewsets.ViewSet):
                             'justification': justification,
                         })
 
-                # Clôturer
                 inv.statut   = 'CLOTURE'
                 inv.date_fin = timezone.now()
                 inv.save()
@@ -606,7 +618,7 @@ class InventaireViewSet(viewsets.ViewSet):
             'ajustements': ajustements,
             'date_fin':    inv.date_fin,
         })
-        
+
     @action(detail=True, methods=['delete'], url_path='supprimer')
     def supprimer(self, request, pk=None):
         """DELETE /inventaires/{id}/supprimer/"""
@@ -617,12 +629,12 @@ class InventaireViewSet(viewsets.ViewSet):
         except Inventaire.DoesNotExist:
             return Response({'error': 'Inventaire introuvable.'}, status=404)
 
-        if inv.statut == 'CLOTURE':
-            # Vérifier délai 3 jours
-            if inv.date_fin:
-                diff = (timezone.now() - inv.date_fin).days
-                if diff > 3:
-                    return Response({'error': 'Impossible de supprimer un inventaire clôturé depuis plus de 3 jours.'}, status=403)
+        if inv.statut == 'CLOTURE' and inv.date_fin:
+            diff = (timezone.now() - inv.date_fin).days
+            if diff > 3:
+                return Response({
+                    'error': 'Impossible de supprimer un inventaire clôturé depuis plus de 3 jours.'
+                }, status=403)
 
         inv.delete()
         return Response({'message': f'Inventaire #{pk} supprimé.'})

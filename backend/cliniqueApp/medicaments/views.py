@@ -22,7 +22,7 @@ class MedicamentViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['est_actif', 'forme_galenique', 'categorie']
     search_fields = ['nom_commercial', 'dci', 'code_barres']
-    ordering_fields = ['nom_commercial', 'prix_unitaire', 'seuil_alerte']
+    ordering_fields = ['nom_commercial', 'prix_vente', 'seuil_alerte']
 
     def get_queryset(self):
         return Medicament.objects.select_related('categorie').order_by('nom_commercial')
