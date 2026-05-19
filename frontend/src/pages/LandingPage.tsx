@@ -1,625 +1,537 @@
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
-  Box, Button, Typography, Container, AppBar, Toolbar, Chip,
-} from '@mui/material';
-import {
-  Inventory2, Analytics, Security, Speed,
-  CheckCircle, ArrowForward, LocalHospital,
-  Notifications, Assessment,
-} from '@mui/icons-material';
-import {
-  motion, useScroll, useTransform, useInView,
-  type Variants, type Transition,
-} from 'framer-motion';
+  ArrowRight, Package, BarChart3, ShieldCheck, Zap,
+  Bell, FileText, ChevronRight, Star, Play, Check,
+  TrendingUp, Clock, Users, Award, Pill, Menu, X,
+} from 'lucide-react';
 
-// ── Ease cubic-bezier typé correctement ──────────────────────────────────────
-const EASE_OUT: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
+import heroIllustration from '../assets/hero-illustration.png';
+import testimonial1 from '../assets/testimonial-1.jpg';
+import testimonial2 from '../assets/testimonial-2.jpg';
+import testimonial3 from '../assets/testimonial-3.jpg';
 
-// ── Données ───────────────────────────────────────────────────────────────────
-const features = [
-  { icon: Inventory2,     title: 'Gestion des stocks',    desc: 'Suivi en temps réel avec alertes automatiques de rupture et de péremption.',        accent: '#2196F3' },
-  { icon: Analytics,     title: 'Analytique avancée',     desc: 'Tableaux de bord interactifs pour visualiser consommations et tendances.',           accent: '#3F51B5' },
-  { icon: Security,      title: 'Sécurité & Audit',       desc: "Journal d'audit complet, contrôle d'accès par rôle et traçabilité totale.",          accent: '#0D47A1' },
-  { icon: Speed,         title: 'Performance optimale',   desc: "Interface rapide et intuitive, accessible depuis n'importe quel appareil.",          accent: '#1565C0' },
-  { icon: Notifications, title: 'Alertes intelligentes',  desc: 'Notifications automatiques pour stocks critiques, péremptions et anomalies.',        accent: '#1976D2' },
-  { icon: Assessment,    title: 'Rapports détaillés',     desc: 'Génération automatique de rapports de consommation, inventaire et valorisation.',    accent: '#2196F3' },
+/* ── Types ─────────────────────────────────────────────────────────────── */
+interface Feature { icon: React.ElementType; title: string; desc: string; accent: string; }
+interface StatItem { value: string; label: string; icon: React.ElementType; }
+interface Testimonial { name: string; role: string; clinic: string; quote: string; avatar: string; rating: number; }
+
+/* ── Data ──────────────────────────────────────────────────────────────── */
+const features: Feature[] = [
+  { icon: Package,     title: 'Gestion des stocks',    desc: "Suivi en temps réel avec alertes automatiques de rupture et de péremption pour chaque médicament.",            accent: '#0EA5E9' },
+  { icon: BarChart3,   title: 'Analytique avancée',    desc: "Tableaux de bord interactifs pour visualiser consommations, tendances et prévisions de réapprovisionnement.",  accent: '#6366F1' },
+  { icon: ShieldCheck, title: 'Sécurité & Audit',      desc: "Journal d'audit complet, contrôle d'accès par rôle et traçabilité totale de chaque mouvement de stock.",      accent: '#10B981' },
+  { icon: Zap,         title: 'Performance optimale',  desc: "Interface ultra-rapide et intuitive, accessible depuis n'importe quel appareil, même en faible connectivité.", accent: '#F59E0B' },
+  { icon: Bell,        title: 'Alertes intelligentes', desc: "Notifications automatiques pour stocks critiques, péremptions imminentes et anomalies de consommation.",       accent: '#EC4899' },
+  { icon: FileText,    title: 'Rapports détaillés',    desc: "Génération automatique de rapports de consommation, d'inventaire et de valorisation en un clic.",              accent: '#8B5CF6' },
 ];
 
-const stats = [
-  { value: 500,  suffix: '+',  label: 'Cliniques partenaires'  },
-  { value: 99,   suffix: '%',  label: 'Disponibilité garantie' },
-  { value: 2,    suffix: 's',  label: 'Temps de réponse'       },
-  { value: 24,   suffix: '/7', label: 'Support technique'      },
+const stats: StatItem[] = [
+  { value: '500+',  label: 'Cliniques partenaires',  icon: Users      },
+  { value: '99.9%', label: 'Disponibilité garantie', icon: TrendingUp },
+  { value: '<2s',   label: 'Temps de réponse',       icon: Clock      },
+  { value: '24/7',  label: 'Support technique',      icon: Award      },
 ];
 
-// ── Hook compteur animé ───────────────────────────────────────────────────────
-function useCounter(target: number, duration = 1800, started: boolean) {
-  const [count, setCount] = useState(0);
+const testimonials: Testimonial[] = [
+  { name: 'Dr. Amina Nkomo',      role: 'Directrice médicale', clinic: 'Clinique Sainte-Marie, Yaoundé', quote: "CliniqueStock a transformé notre gestion pharmaceutique. Les ruptures de stock ont chuté de 80% et nos équipes gagnent 3h par jour.", avatar: testimonial1, rating: 5 },
+  { name: 'Jean-Baptiste Mvondo', role: 'Pharmacien chef',     clinic: 'Hôpital Central de Douala',      quote: "L'interface est d'une clarté remarquable. Les alertes automatiques nous ont évité plusieurs crises de stock.", avatar: testimonial2, rating: 5 },
+  { name: 'Dr. Célestine Biya',   role: 'Administratrice',     clinic: 'Polyclinique du Littoral',       quote: "Enfin une solution pensée pour les réalités africaines. Le support est réactif, la plateforme fiable même avec une connexion limitée.", avatar: testimonial3, rating: 5 },
+];
+
+const benefits = [
+  'Réduction des ruptures de stock de 85%',
+  'Traçabilité complète de chaque médicament',
+  'Conformité réglementaire automatisée',
+  'Rapports prêts en quelques secondes',
+  'Accès multi-sites centralisé',
+  'Intégration avec vos systèmes existants',
+];
+
+/* ── Shared styles helpers ────────────────────────────────────────────── */
+const FONT = "'Segoe UI', system-ui, sans-serif";
+const GRAD = 'linear-gradient(90deg,#0ea5e9,#6366f1)';
+
+/* ── Logo ─────────────────────────────────────────────────────────────── */
+function Logo({ dark = false }: { dark?: boolean }) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ position: 'relative', width: 36, height: 36 }}>
+        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: GRAD, opacity: 0.35, filter: 'blur(5px)' }} />
+        <div style={{ position: 'relative', width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 12px rgba(14,165,233,0.3)' }}>
+          <Pill size={16} color="#fff" strokeWidth={2.5} />
+        </div>
+      </div>
+      <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.3px', color: dark ? '#fff' : '#0f172a' }}>
+        Clinique
+        <span style={dark ? { color: '#7dd3fc' } : { background: GRAD, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Stock</span>
+      </span>
+    </div>
+  );
+}
+
+/* ── Navbar ───────────────────────────────────────────────────────────── */
+function Navbar() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    if (!started) return;
-    const steps = 60;
-    const increment = target / steps;
-    let current = 0;
-    const id = setInterval(() => {
-      current += increment;
-      if (current >= target) { setCount(target); clearInterval(id); }
-      else setCount(Math.floor(current));
-    }, duration / steps);
-    return () => clearInterval(id);
-  }, [target, duration, started]);
-  return count;
-}
-
-// ── Variants d'animation (ease correctement typé) ────────────────────────────
-const fadeUp: Variants = {
-  hidden:  { opacity: 0, y: 40 },
-  visible: (i: number = 0) => ({
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.7,
-      delay: i * 0.1,
-      ease: EASE_OUT,
-    } as Transition,
-  }),
-};
-
-const fadeIn: Variants = {
-  hidden:  { opacity: 0 },
-  visible: { opacity: 1, transition: { duration: 0.8, ease: 'easeOut' } },
-};
-
-const scaleIn: Variants = {
-  hidden:  { opacity: 0, scale: 0.92 },
-  visible: (i: number = 0) => ({
-    opacity: 1,
-    scale: 1,
-    transition: {
-      duration: 0.6,
-      delay: i * 0.08,
-      ease: EASE_OUT,
-    } as Transition,
-  }),
-};
-
-// ── StatCard ──────────────────────────────────────────────────────────────────
-function StatCard({ value, suffix, label, started }: {
-  value: number; suffix: string; label: string; started: boolean;
-}) {
-  const count = useCounter(value, 1800, started);
+    const fn = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', fn);
+    return () => window.removeEventListener('scroll', fn);
+  }, []);
+  const links = [
+    { label: 'Fonctionnalités', href: '#features'     },
+    { label: 'Avantages',       href: '#benefits'     },
+    { label: 'Témoignages',     href: '#testimonials' },
+  ];
   return (
-    <Box sx={{ textAlign: 'center', px: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 0.5 }}>
-        <Typography variant="h2" fontWeight={900} color="white"
-          sx={{ lineHeight: 1, fontSize: { xs: '2.4rem', md: '3rem' } }}>
-          {count}
-        </Typography>
-        <Typography variant="h4" fontWeight={800} color="rgba(255,255,255,0.9)" sx={{ lineHeight: 1 }}>
-          {suffix}
-        </Typography>
-      </Box>
-      <Typography variant="body2" color="rgba(255,255,255,0.65)" fontWeight={500} sx={{ mt: 0.8 }}>
-        {label}
-      </Typography>
-    </Box>
-  );
-}
-
-// ── FeatureCard ───────────────────────────────────────────────────────────────
-function FeatureCard({ feature, index }: { feature: typeof features[0]; index: number }) {
-  const [hovered, setHovered] = useState(false);
-  const IconCmp = feature.icon;
-
-  return (
-    <motion.div
-      custom={index}
-      variants={scaleIn}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, margin: '-60px' }}
-      onHoverStart={() => setHovered(true)}
-      onHoverEnd={() => setHovered(false)}
-      style={{ height: '100%' }}
-    >
-      <Box sx={{
-        height: '100%',
-        border: '1px solid',
-        borderColor: hovered ? 'rgba(33,150,243,0.35)' : 'rgba(33,150,243,0.12)',
-        borderRadius: '20px',
-        p: 3.5,
-        bgcolor: hovered ? 'rgba(33,150,243,0.04)' : 'white',
-        cursor: 'default',
-        transition: 'all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-        transform: hovered ? 'translateY(-8px)' : 'translateY(0)',
-        boxShadow: hovered
-          ? '0 24px 60px rgba(33,150,243,0.15), 0 8px 20px rgba(0,0,0,0.06)'
-          : '0 2px 12px rgba(0,0,0,0.04)',
-        position: 'relative',
-        overflow: 'hidden',
+    <header style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50, padding: '12px 16px', fontFamily: FONT }}>
+      <nav style={{
+        maxWidth: 1100, margin: '0 auto',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.75)',
+        backdropFilter: 'blur(16px)', borderRadius: 16,
+        padding: '10px 20px',
+        border: '1px solid rgba(255,255,255,0.8)',
+        boxShadow: scrolled ? '0 4px 24px rgba(0,0,0,0.08)' : '0 2px 12px rgba(0,0,0,0.04)',
+        transition: 'all 0.3s',
       }}>
-        <Box sx={{
-          position: 'absolute', top: 0, right: 0,
-          width: 120, height: 120, borderRadius: '50%',
-          background: `radial-gradient(circle, ${feature.accent}18 0%, transparent 70%)`,
-          transform: hovered ? 'scale(2)' : 'scale(1)',
-          transition: 'transform 0.5s ease',
-          pointerEvents: 'none',
-        }} />
-        <Box sx={{
-          width: 56, height: 56, borderRadius: '14px',
-          bgcolor: hovered ? `${feature.accent}18` : 'rgba(33,150,243,0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          mb: 2.5, transition: 'all 0.35s ease',
-          border: `1px solid ${feature.accent}20`,
-        }}>
-          <IconCmp sx={{
-            fontSize: 26, color: feature.accent,
-            transition: 'all 0.3s ease',
-            transform: hovered ? 'scale(1.15)' : 'scale(1)',
-          }} />
-        </Box>
-        <Typography variant="h6" fontWeight={700} color="#0D47A1" sx={{ mb: 1, fontSize: '1.05rem' }}>
-          {feature.title}
-        </Typography>
-        <Typography variant="body2" color="#607D8B" sx={{ lineHeight: 1.75, fontSize: '0.88rem' }}>
-          {feature.desc}
-        </Typography>
-      </Box>
-    </motion.div>
+        <Logo />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {links.map(l => (
+            <a key={l.href} href={l.href} style={{ padding: '7px 14px', borderRadius: 8, fontSize: 14, fontWeight: 500, color: '#64748b', textDecoration: 'none', transition: 'color 0.2s' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#0f172a')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}>
+              {l.label}
+            </a>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#374151', padding: '8px 14px', borderRadius: 8, transition: 'background 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+            Se connecter
+          </button>
+          <button onClick={() => navigate('/login')} style={{ background: GRAD, border: 'none', cursor: 'pointer', color: '#fff', fontSize: 14, fontWeight: 600, padding: '9px 20px', borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 3px 12px rgba(14,165,233,0.3)', transition: 'opacity 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
+            Commencer <ArrowRight size={15} />
+          </button>
+          <button onClick={() => setOpen(v => !v)} style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, color: '#374151' }} className="cs-menu-btn">
+            {open ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+      </nav>
+    </header>
   );
 }
 
-// ── Bouton magnétique ─────────────────────────────────────────────────────────
-function MagneticButton({ children, onClick, variant = 'primary', size = 'large' }: {
-  children: React.ReactNode; onClick: () => void;
-  variant?: 'primary' | 'white'; size?: 'large' | 'medium';
-}) {
-  const [pos, setPos]       = useState({ x: 0, y: 0 });
-  const [hovered, setHov]   = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const r = ref.current.getBoundingClientRect();
-    setPos({ x: (e.clientX - r.left - r.width / 2) * 0.3, y: (e.clientY - r.top - r.height / 2) * 0.3 });
-  };
-
-  const isPrimary = variant === 'primary';
-
+/* ── Feature Card ─────────────────────────────────────────────────────── */
+function FeatureCard({ f }: { f: Feature }) {
+  const [hovered, setHovered] = useState(false);
+  const Icon = f.icon;
   return (
-    <Box ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => { setHov(false); setPos({ x: 0, y: 0 }); }}
-      sx={{ display: 'inline-block' }}
-    >
-      <motion.div
-        animate={{ x: hovered ? pos.x : 0, y: hovered ? pos.y : 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      >
-        <Button onClick={onClick} size={size}
-          endIcon={<ArrowForward sx={{
-            fontSize: 18, transition: 'transform 0.3s ease',
-            transform: hovered ? 'translateX(4px)' : 'none',
-          }} />}
-          sx={{
-            borderRadius: '14px', textTransform: 'none', fontWeight: 700,
-            fontSize: size === 'large' ? 16 : 14,
-            px: size === 'large' ? 4.5 : 3, py: size === 'large' ? 1.8 : 1.3,
-            background: isPrimary ? 'linear-gradient(135deg, #2196F3, #1565C0)' : 'white',
-            color: isPrimary ? 'white' : '#1565C0',
-            boxShadow: isPrimary
-              ? (hovered ? '0 16px 40px rgba(33,150,243,0.5)' : '0 8px 24px rgba(33,150,243,0.35)')
-              : (hovered ? '0 8px 24px rgba(0,0,0,0.15)'      : '0 4px 12px rgba(0,0,0,0.1)'),
-            border: isPrimary ? 'none' : '1px solid rgba(33,150,243,0.15)',
-            transition: 'box-shadow 0.3s ease, background 0.3s ease',
-            '&:hover': {
-              background: isPrimary ? 'linear-gradient(135deg, #42A5F5, #1976D2)' : '#EEF4FF',
-            },
-          }}
-        >
-          {children}
-        </Button>
-      </motion.div>
-    </Box>
-  );
-}
-
-// ── Particules flottantes ─────────────────────────────────────────────────────
-function FloatingParticles() {
-  const particles = Array.from({ length: 12 }, (_, i) => ({
-    id: i,
-    x: 10 + (i * 7.5) % 85,
-    y: 5  + (i * 11.3) % 85,
-    size: 3 + (i % 4) * 2,
-    duration: 6 + (i % 5) * 2,
-    delay: (i % 6) * -1.5,
-  }));
-
-  return (
-    <Box sx={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-      {particles.map(p => (
-        <motion.div key={p.id}
-          style={{
-            position: 'absolute', left: `${p.x}%`, top: `${p.y}%`,
-            width: p.size, height: p.size, borderRadius: '50%',
-            background: 'rgba(33,150,243,0.25)',
-          }}
-          animate={{ y: [-12, 12, -12], opacity: [0.3, 0.7, 0.3] }}
-          transition={{ duration: p.duration, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      ))}
-    </Box>
-  );
-}
-
-// ── Séparateur animé ──────────────────────────────────────────────────────────
-function AnimatedDivider() {
-  return (
-    <motion.div
-      initial={{ scaleX: 0, opacity: 0 }}
-      whileInView={{ scaleX: 1, opacity: 1 }}
-      viewport={{ once: true }}
-      transition={{ duration: 1.2, ease: EASE_OUT }}
+    <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
-        height: 1,
-        background: 'linear-gradient(90deg, transparent, rgba(33,150,243,0.3), transparent)',
-        margin: '0 auto', maxWidth: '80%', transformOrigin: 'center',
-      }}
-    />
+        background: hovered ? '#fff' : 'rgba(255,255,255,0.7)',
+        border: `1px solid ${hovered ? '#e2e8f0' : '#f1f5f9'}`,
+        borderRadius: 16, padding: 24,
+        transform: hovered ? 'translateY(-5px)' : 'translateY(0)',
+        boxShadow: hovered ? '0 16px 48px rgba(0,0,0,0.09)' : '0 1px 4px rgba(0,0,0,0.04)',
+        transition: 'all 0.25s cubic-bezier(0.16,1,0.3,1)',
+      }}>
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: `${f.accent}18`, border: `1px solid ${f.accent}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+        <Icon size={20} color={f.accent} />
+      </div>
+      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>{f.title}</h3>
+      <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, margin: 0 }}>{f.desc}</p>
+    </div>
   );
 }
 
-// ── Badge pulsant ─────────────────────────────────────────────────────────────
-function PulseBadge({ children }: { children: string }) {
+/* ── Testimonial Card ─────────────────────────────────────────────────── */
+function TestiCard({ t }: { t: Testimonial }) {
   return (
-    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, position: 'relative' }}>
-      <motion.div
-        animate={{ scale: [1, 1.4, 1], opacity: [0.8, 0, 0.8] }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
-        style={{
-          width: 8, height: 8, borderRadius: '50%',
-          background: '#4CAF50', position: 'absolute', left: 12,
-        }}
-      />
-      <Chip label={children} sx={{
-        bgcolor: 'rgba(33,150,243,0.08)', color: '#1565C0',
-        fontWeight: 600, fontSize: '0.8rem', px: 1.5, pl: 3.5,
-        border: '1px solid rgba(33,150,243,0.2)', borderRadius: '20px',
-        '& .MuiChip-label': { px: 0 },
-      }} />
-    </Box>
+    <div style={{ background: 'rgba(255,255,255,0.8)', border: '1px solid #f1f5f9', borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 3 }}>
+        {Array.from({ length: t.rating }).map((_, i) => <Star key={i} size={15} fill="#fbbf24" color="#fbbf24" />)}
+      </div>
+      <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.7, fontStyle: 'italic', margin: 0, flex: 1 }}>"{t.quote}"</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <img src={t.avatar} alt={t.name} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '2px solid #e2e8f0' }} />
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>{t.name}</p>
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>{t.role} · {t.clinic}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ── Page principale ───────────────────────────────────────────────────────────
+/* ── Mini dashboard ───────────────────────────────────────────────────── */
+function DashboardPreview() {
+  const bars   = [55, 72, 48, 88, 63, 79, 91, 58, 84, 69, 77, 95];
+  const months = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  return (
+    <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.1)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid #f1f5f9', padding: '10px 16px' }}>
+        {['#f87171','#fbbf24','#34d399'].map(c => <div key={c} style={{ width: 11, height: 11, borderRadius: '50%', background: c }} />)}
+        <div style={{ flex: 1, background: '#f8fafc', borderRadius: 6, padding: '3px 12px', fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>
+          app.cliniquestock.cm/inventaire
+        </div>
+      </div>
+      <div style={{ padding: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+          {[
+            { label: 'Stock total', val: '1 248', delta: '+12', color: '#0EA5E9' },
+            { label: 'Alertes',     val: '5',     delta: '-3',  color: '#F59E0B' },
+            { label: 'Commandes',   val: '12',    delta: '+4',  color: '#10B981' },
+          ].map(({ label, val, delta, color }) => (
+            <div key={label} style={{ background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 10, padding: '10px 12px' }}>
+              <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 4px' }}>{label}</p>
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{val}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color }}>{delta}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Chart */}
+        <div style={{ background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 10, padding: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>Mouvements — 12 derniers mois</span>
+            <span style={{ fontSize: 10, color: '#0ea5e9', background: 'rgba(14,165,233,0.1)', padding: '2px 8px', borderRadius: 20 }}>2026</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 80 }}>
+            {bars.map((h, i) => (
+              <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: 3, background: 'linear-gradient(180deg,#0ea5e9,#6366f1)', opacity: 0.45 + h * 0.006 }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+            {months.map(m => <span key={m} style={{ fontSize: 8, color: '#94a3b8' }}>{m}</span>)}
+          </div>
+        </div>
+        {/* Rows */}
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {[
+            { name: 'Paracétamol 500mg',  status: 'Stock critique',      dot: '#ef4444' },
+            { name: 'Amoxicilline 250mg',  status: 'Expire dans 14j',     dot: '#f59e0b' },
+            { name: 'Métronidazole',        status: 'Réapprovisionnement', dot: '#10b981' },
+          ].map(row => (
+            <div key={row.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 8, padding: '7px 10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: row.dot }} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#1e293b' }}>{row.name}</span>
+              </div>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>{row.status}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+function Footer() {
+  const cols = [
+    { title: 'Produit',    links: ['Fonctionnalités', 'Tarifs', 'Sécurité', 'Mises à jour'] },
+    { title: 'Entreprise', links: ['À propos', 'Blog', 'Carrières', 'Contact']              },
+    { title: 'Ressources', links: ['Documentation', 'Guides', 'Support', 'API']             },
+    { title: 'Légal',      links: ['Confidentialité', 'Conditions', 'Cookies', 'RGPD']      },
+  ];
+  return (
+    <footer style={{ borderTop: '1px solid #f1f5f9', background: 'rgba(248,250,252,0.6)', fontFamily: FONT }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '60px 24px 32px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: 40, marginBottom: 48 }}>
+          <div>
+            <Logo />
+            <p style={{ marginTop: 14, fontSize: 13, color: '#64748b', lineHeight: 1.6, maxWidth: 240 }}>
+              La plateforme de référence pour la gestion pharmaceutique des cliniques au Cameroun.
+            </p>
+          </div>
+          {cols.map(c => (
+            <div key={c.title}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '0 0 16px' }}>{c.title}</h4>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {c.links.map(l => (
+                  <li key={l}><a href="#" style={{ fontSize: 13, color: '#64748b', textDecoration: 'none' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#0f172a')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}>{l}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 24, display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}>
+          <p style={{ margin: 0 }}>© {new Date().getFullYear()} CliniqueStock. Tous droits réservés.</p>
+          <p style={{ margin: 0 }}>Fabriqué avec soin à Douala, Cameroun 🇨🇲</p>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+/* ── Section wrapper helper ───────────────────────────────────────────── */
+function SectionBadge({ color = '#0ea5e9', label }: { color?: string; label: string }) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 500, color: '#64748b', marginBottom: 16 }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
+      {label}
+    </div>
+  );
+}
+
+/* ── Page principale ──────────────────────────────────────────────────── */
 export default function LandingPage() {
   const navigate = useNavigate();
-  const statsRef = useRef<HTMLDivElement>(null);
-  const statsInView = useInView(statsRef, { once: true, margin: '-100px' });
-
-  const { scrollYProgress } = useScroll();
-  const heroY       = useTransform(scrollYProgress, [0, 0.3], [0, -60]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0]);
-
-  const [cursor, setCursor] = useState({ x: 0, y: 0, visible: false });
 
   return (
-    <Box
-      onMouseMove={(e) => setCursor({ x: e.clientX, y: e.clientY, visible: true })}
-      sx={{ bgcolor: '#F8FBFF', minHeight: '100vh', overflow: 'hidden' }}
-    >
-      {/* Cursor glow */}
-      <motion.div
-        animate={{ x: cursor.x - 200, y: cursor.y - 200, opacity: cursor.visible ? 1 : 0 }}
-        transition={{ type: 'spring', stiffness: 80, damping: 30, mass: 0.5 }}
-        style={{
-          position: 'fixed', width: 400, height: 400, borderRadius: '50%',
-          pointerEvents: 'none', zIndex: 0,
-          background: 'radial-gradient(circle, rgba(33,150,243,0.06) 0%, transparent 70%)',
-        }}
-      />
+    <div style={{ fontFamily: FONT, color: '#0f172a', background: '#fff', overflowX: 'hidden' }}>
+      <style>{`
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        #root { width: 100% !important; max-width: 100% !important; border: none !important; text-align: left !important; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+        .cs-hero-content { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; }
+        .cs-hero-visual  { animation: fadeUp 0.9s 0.2s cubic-bezier(0.16,1,0.3,1) both; }
+        .cs-float        { animation: float 6s ease-in-out infinite; }
+        @media (max-width: 768px) {
+          .cs-menu-btn { display: flex !important; }
+          .cs-nav-links { display: none !important; }
+          .cs-hero-grid { flex-direction: column !important; }
+          .cs-footer-grid { grid-template-columns: 1fr 1fr !important; }
+          .cs-feat-grid { grid-template-columns: 1fr !important; }
+          .cs-test-grid { grid-template-columns: 1fr !important; }
+          .cs-stats-grid { grid-template-columns: 1fr 1fr !important; }
+        }
+      `}</style>
 
-      {/* ── Navbar ── */}
-      <motion.div
-        initial={{ y: -80, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.7, ease: EASE_OUT }}
-        style={{ position: 'sticky', top: 0, zIndex: 1100 }}
-      >
-        <AppBar elevation={0} sx={{
-          bgcolor: 'rgba(248,251,255,0.92)', backdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(33,150,243,0.1)', position: 'static',
-        }}>
-          <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, md: 6 }, py: 0.5 }}>
-            <motion.div whileHover={{ scale: 1.03 }} transition={{ type: 'spring', stiffness: 400 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Box sx={{
-                  width: 38, height: 38, borderRadius: '10px',
-                  background: 'linear-gradient(135deg, #2196F3, #1565C0)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 4px 12px rgba(33,150,243,0.35)',
-                }}>
-                  <LocalHospital sx={{ color: 'white', fontSize: 20 }} />
-                </Box>
-                <Typography variant="h6" fontWeight={800} color="#1565C0" letterSpacing="-0.3px">
-                  CliniqueStock
-                </Typography>
-              </Box>
-            </motion.div>
-            <MagneticButton onClick={() => navigate('/login')} size="medium">
-              Se connecter
-            </MagneticButton>
-          </Toolbar>
-        </AppBar>
-      </motion.div>
+      <Navbar />
 
-      {/* ── Hero ── */}
-      <Box sx={{ position: 'relative', overflow: 'hidden', minHeight: '88vh', display: 'flex', alignItems: 'center' }}>
-        <Box sx={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(160deg, #E3F2FD 0%, #F8FBFF 50%, #BBDEFB 100%)',
-        }} />
-        <Box sx={{
-          position: 'absolute', inset: 0, opacity: 0.4,
-          backgroundImage: 'linear-gradient(rgba(33,150,243,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(33,150,243,0.07) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-          maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 80%)',
-        }} />
+      {/* ── HERO ───────────────────────────────────────────────────── */}
+      <section style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', paddingTop: 100, paddingBottom: 60, background: 'linear-gradient(160deg,#f0f9ff 0%,#fff 55%,#f0f4ff 100%)', position: 'relative', overflow: 'hidden' }}>
+        {/* BG decoration */}
+        <div style={{ position: 'absolute', top: -100, left: '50%', transform: 'translateX(-50%)', width: 900, height: 600, borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(14,165,233,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-        <motion.div
-          animate={{ scale: [1, 1.08, 1], opacity: [0.5, 0.7, 0.5] }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-          style={{
-            position: 'absolute', width: 700, height: 700, borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(33,150,243,0.1) 0%, transparent 70%)',
-            top: -250, right: -150, pointerEvents: 'none',
-          }}
-        />
-        <motion.div
-          animate={{ scale: [1, 1.05, 1], opacity: [0.4, 0.6, 0.4] }}
-          transition={{ duration: 10, delay: 2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{
-            position: 'absolute', width: 500, height: 500, borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(21,101,192,0.08) 0%, transparent 70%)',
-            bottom: -200, left: -100, pointerEvents: 'none',
-          }}
-        />
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 24px', width: '100%', display: 'flex', alignItems: 'center', gap: 60 }} className="cs-hero-grid">
+          {/* Left */}
+          <div style={{ flex: 1, minWidth: 0 }} className="cs-hero-content">
+            {/* Badge */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 500, color: '#0284c7', marginBottom: 28 }}>
+              <span style={{ position: 'relative', width: 8, height: 8 }}>
+                <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#10b981', opacity: 0.5, animation: 'pulse 1.5s infinite' }} />
+                <span style={{ position: 'relative', display: 'block', width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+              </span>
+              Nouveau · Tableau de bord IA pour la pharmacie
+              <ChevronRight size={13} style={{ opacity: 0.6 }} />
+            </div>
 
-        <FloatingParticles />
+            <h1 style={{ fontSize: 'clamp(36px,5vw,62px)', fontWeight: 800, lineHeight: 1.08, letterSpacing: '-1.5px', color: '#0f172a', margin: '0 0 20px' }}>
+              Optimisez la gestion<br />
+              de vos{' '}
+              <span style={{ background: GRAD, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', display: 'inline-block', position: 'relative' }}>
+                stocks médicaux
+                <span style={{ position: 'absolute', bottom: -3, left: 0, right: 0, height: 3, background: GRAD, borderRadius: 2 }} />
+              </span>
+            </h1>
 
-        <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-          <motion.div style={{ y: heroY, opacity: heroOpacity }}>
-            <Box sx={{ textAlign: 'center', maxWidth: 820, mx: 'auto' }}>
+            <p style={{ fontSize: 18, color: '#475569', lineHeight: 1.65, margin: '0 0 36px', maxWidth: 500 }}>
+              CliniqueStock aide les cliniques à suivre leurs médicaments en temps réel, anticiper les ruptures et garantir la traçabilité pour une qualité de soins irréprochable.
+            </p>
 
-              <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={0}>
-                <PulseBadge>✦ Plateforme de nouvelle génération</PulseBadge>
-              </motion.div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 32 }}>
+              <button onClick={() => navigate('/login')} style={{ background: GRAD, border: 'none', color: '#fff', fontWeight: 700, fontSize: 15, padding: '13px 28px', borderRadius: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 6px 24px rgba(14,165,233,0.35)', transition: 'opacity 0.2s' }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
+                Commencer maintenant <ArrowRight size={16} />
+              </button>
+              <button style={{ background: '#fff', border: '1.5px solid #e2e8f0', color: '#374151', fontWeight: 600, fontSize: 15, padding: '12px 24px', borderRadius: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'border-color 0.2s' }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = '#94a3b8')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}>
+                <Play size={15} fill="currentColor" style={{ opacity: 0.7 }} /> Voir la démonstration
+              </button>
+            </div>
 
-              <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={1}>
-                <Typography variant="h1" fontWeight={900} color="#0D47A1" sx={{
-                  mt: 3, mb: 2.5, lineHeight: 1.1,
-                  fontSize: { xs: '2.4rem', sm: '3rem', md: '3.8rem' },
-                  letterSpacing: '-1.5px',
-                }}>
-                  Gérez votre stock médical{' '}
-                  <Box component="span" sx={{
-                    background: 'linear-gradient(135deg, #2196F3 0%, #1565C0 50%, #3F51B5 100%)',
-                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text', display: 'inline-block',
-                  }}>
-                    avec intelligence
-                  </Box>
-                </Typography>
-              </motion.div>
+            {/* Trust badges */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
+              {['Certifié ISO 27001', 'Conforme RGPD', 'Hébergement HDS', 'Chiffrement bancaire'].map(b => (
+                <div key={b} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#64748b' }}>
+                  <Check size={13} color="#10b981" /> {b}
+                </div>
+              ))}
+            </div>
+          </div>
 
-              <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={2}>
-                <Typography variant="h6" color="#546E7A" sx={{
-                  mb: 5, lineHeight: 1.85, fontWeight: 400,
-                  fontSize: { xs: '1rem', md: '1.15rem' }, maxWidth: 640, mx: 'auto',
-                }}>
-                  CliniqueStock centralise vos inventaires pharmaceutiques,
-                  automatise vos commandes et garantit la conformité de votre établissement.
-                </Typography>
-              </motion.div>
+          {/* Right — visual */}
+          <div style={{ flex: '0 0 460px', maxWidth: '100%', position: 'relative' }} className="cs-hero-visual">
+            <div style={{ position: 'absolute', inset: -16, borderRadius: 24, background: 'radial-gradient(ellipse,rgba(14,165,233,0.1) 0%,rgba(99,102,241,0.08) 60%,transparent 80%)', filter: 'blur(12px)', pointerEvents: 'none' }} />
+            <div className="cs-float"><DashboardPreview /></div>
 
-              <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={3}>
-                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
-                  <MagneticButton onClick={() => navigate('/login')}>
-                    Accéder à la plateforme
-                  </MagneticButton>
-                </Box>
-              </motion.div>
+            {/* Floating badge left */}
+            <div style={{ position: 'absolute', left: -28, top: '25%', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '10px 14px', boxShadow: '0 8px 32px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(16,185,129,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TrendingUp size={15} color="#10b981" />
+              </div>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', margin: 0 }}>Stock optimisé</p>
+                <p style={{ fontSize: 11, color: '#10b981', margin: 0 }}>↑ 24% ce mois</p>
+              </div>
+            </div>
 
-              <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={4}>
-                <Box sx={{ display: 'flex', justifyContent: 'center', gap: { xs: 2, md: 4 }, mt: 5, flexWrap: 'wrap' }}>
-                  {['Certifié ISO 27001', 'Conforme RGPD', 'Hébergement HDS'].map((item, i) => (
-                    <motion.div key={item}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 1 + i * 0.15 }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                        <CheckCircle sx={{ color: '#4CAF50', fontSize: 17 }} />
-                        <Typography variant="body2" color="#607D8B" fontWeight={500} fontSize="0.85rem">
-                          {item}
-                        </Typography>
-                      </Box>
-                    </motion.div>
-                  ))}
-                </Box>
-              </motion.div>
+            {/* Floating badge right */}
+            <div style={{ position: 'absolute', right: -28, top: '38%', background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14, padding: '10px 14px', boxShadow: '0 8px 32px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Bell size={15} color="#ef4444" />
+              </div>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', margin: 0 }}>5 alertes</p>
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>à traiter</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-              {/* Mini dashboard flottant */}
-              <motion.div
-                initial={{ opacity: 0, y: 60, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ delay: 0.8, duration: 1, ease: EASE_OUT }}
-              >
-                <motion.div
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  <Box sx={{
-                    mt: 8, mx: 'auto', maxWidth: 700,
-                    bgcolor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(20px)',
-                    borderRadius: '20px', border: '1px solid rgba(33,150,243,0.2)',
-                    boxShadow: '0 30px 80px rgba(33,150,243,0.15), 0 8px 20px rgba(0,0,0,0.06)',
-                    p: 3,
-                  }}>
-                    <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>
-                      {[
-                        { label: 'Stock total', val: '1 248', color: '#2196F3' },
-                        { label: 'Alertes',     val: '5',     color: '#FF9800' },
-                        { label: 'Commandes',   val: '12',    color: '#4CAF50' },
-                      ].map(({ label, val, color }) => (
-                        <Box key={label} sx={{
-                          flex: 1, bgcolor: `${color}10`, border: `1px solid ${color}30`,
-                          borderRadius: '10px', p: 1.5, textAlign: 'center',
-                        }}>
-                          <Typography fontSize={18} fontWeight={900} color={color}>{val}</Typography>
-                          <Typography fontSize={10} color="#90A4AE" fontWeight={500}>{label}</Typography>
-                        </Box>
-                      ))}
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 0.8, alignItems: 'flex-end', height: 48 }}>
-                      {[65, 40, 75, 55, 85, 45, 70].map((h, i) => (
-                        <motion.div key={i}
-                          initial={{ scaleY: 0 }}
-                          animate={{ scaleY: 1 }}
-                          transition={{ delay: 1.2 + i * 0.1, duration: 0.6, ease: 'easeOut' }}
-                          style={{ transformOrigin: 'bottom', flex: 1 }}
-                        >
-                          <Box sx={{
-                            height: h * 0.5, borderRadius: '4px 4px 0 0',
-                            background: `linear-gradient(180deg, #2196F3, #1565C0)`,
-                            opacity: 0.6 + h * 0.004,
-                          }} />
-                        </motion.div>
-                      ))}
-                    </Box>
-                  </Box>
-                </motion.div>
-              </motion.div>
-
-            </Box>
-          </motion.div>
-        </Container>
-      </Box>
-
-      {/* ── Stats ── */}
-      <Box ref={statsRef} sx={{ bgcolor: '#1565C0', py: { xs: 6, md: 7 }, position: 'relative', overflow: 'hidden' }}>
-        <motion.div
-          animate={{ x: [0, 60, 0], opacity: [0.07, 0.12, 0.07] }}
-          transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
-          style={{
-            position: 'absolute', top: -80, right: -80,
-            width: 300, height: 300, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.08)',
-          }}
-        />
-        <Container maxWidth="lg">
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 3 }}>
-            {stats.map((stat, i) => (
-              <motion.div key={stat.label} custom={i} variants={fadeUp} initial="hidden"
-                whileInView="visible" viewport={{ once: true }}>
-                <StatCard {...stat} started={statsInView} />
-              </motion.div>
+        {/* Social proof */}
+        <div style={{ position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex' }}>
+            {[testimonial1, testimonial2, testimonial3].map((src, i) => (
+              <img key={i} src={src} alt="" style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid #fff', objectFit: 'cover', marginLeft: i > 0 ? -10 : 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
             ))}
-          </Box>
-        </Container>
-      </Box>
+          </div>
+          <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+            <strong style={{ color: '#0f172a' }}>500+</strong> cliniques font confiance à CliniqueStock
+          </p>
+        </div>
+      </section>
 
-      <AnimatedDivider />
+      {/* ── STATS ──────────────────────────────────────────────────── */}
+      <section style={{ borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9', background: 'rgba(248,250,252,0.6)', padding: '56px 24px' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 32, textAlign: 'center' }} className="cs-stats-grid">
+          {stats.map(s => {
+            const Icon = s.icon;
+            return (
+              <div key={s.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 48, height: 48, borderRadius: 14, background: '#fff', border: '1px solid #f1f5f9', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={20} color="#0ea5e9" />
+                </div>
+                <p style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-1px', color: '#0f172a', margin: 0 }}>{s.value}</p>
+                <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>{s.label}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
-      {/* ── Features ── */}
-      <Container maxWidth="lg" sx={{ py: { xs: 10, md: 14 } }}>
-        <Box sx={{ textAlign: 'center', mb: 9 }}>
-          <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }}>
-            <Box sx={{
-              display: 'inline-block', bgcolor: 'rgba(33,150,243,0.08)',
-              border: '1px solid rgba(33,150,243,0.2)',
-              borderRadius: '20px', px: 2.5, py: 0.7, mb: 3,
-            }}>
-              <Typography variant="body2" color="#1565C0" fontWeight={600}
-                fontSize="0.8rem" letterSpacing="1px" textTransform="uppercase">
-                Fonctionnalités
-              </Typography>
-            </Box>
-            <Typography variant="h3" fontWeight={900} color="#0D47A1"
-              sx={{ mb: 2, letterSpacing: '-0.8px', fontSize: { xs: '1.9rem', md: '2.6rem' } }}>
+      {/* ── FEATURES ───────────────────────────────────────────────── */}
+      <section id="features" style={{ padding: '80px 24px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <SectionBadge label="Fonctionnalités" />
+            <h2 style={{ fontSize: 'clamp(28px,4vw,44px)', fontWeight: 800, letterSpacing: '-0.8px', margin: '0 0 16px' }}>
               Tout ce dont votre clinique{' '}
-              <Box component="span" sx={{
-                background: 'linear-gradient(135deg, #2196F3, #1565C0)',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-              }}>
-                a besoin
-              </Box>
-            </Typography>
-            <Typography variant="body1" color="#546E7A"
-              sx={{ maxWidth: 520, mx: 'auto', lineHeight: 1.8, fontSize: '0.95rem' }}>
+              <span style={{ background: GRAD, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>a besoin</span>
+            </h2>
+            <p style={{ fontSize: 16, color: '#64748b', maxWidth: 500, margin: '0 auto' }}>
               Une solution complète conçue spécifiquement pour les établissements de santé africains.
-            </Typography>
-          </motion.div>
-        </Box>
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }} className="cs-feat-grid">
+            {features.map(f => <FeatureCard key={f.title} f={f} />)}
+          </div>
+        </div>
+      </section>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, gap: 3 }}>
-          {features.map((feature, i) => (
-            <FeatureCard key={feature.title} feature={feature} index={i} />
-          ))}
-        </Box>
-      </Container>
+      {/* ── BENEFITS ───────────────────────────────────────────────── */}
+      <section id="benefits" style={{ padding: '80px 24px', background: 'linear-gradient(160deg,#f0f9ff 0%,#fff 60%,#f0f4ff 100%)' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 64 }} className="cs-hero-grid">
+          {/* Visual */}
+          <div style={{ flex: 1, position: 'relative' }}>
+            <div style={{ position: 'absolute', inset: -16, borderRadius: 24, background: 'radial-gradient(ellipse,rgba(14,165,233,0.08) 0%,transparent 70%)', filter: 'blur(10px)' }} />
+            <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 24px 64px rgba(0,0,0,0.1)', background: 'linear-gradient(135deg,#f0f9ff,#f0f4ff)' }}>
+              <img src={heroIllustration} alt="CliniqueStock dashboard" style={{ width: '100%', objectFit: 'contain', display: 'block' }} />
+            </div>
+          </div>
+          {/* Text */}
+          <div style={{ flex: 1 }}>
+            <SectionBadge label="Avantages concrets" />
+            <h2 style={{ fontSize: 'clamp(26px,3.5vw,38px)', fontWeight: 800, letterSpacing: '-0.5px', margin: '0 0 16px' }}>
+              Résultats mesurables{' '}
+              <span style={{ background: GRAD, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>dès le premier mois</span>
+            </h2>
+            <p style={{ fontSize: 15, color: '#64748b', lineHeight: 1.65, margin: '0 0 28px' }}>
+              Nos clients constatent une amélioration significative dès les premières semaines d'utilisation.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 36 }}>
+              {benefits.map(b => (
+                <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(14,165,233,0.12)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Check size={11} color="#0ea5e9" />
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{b}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => navigate('/login')} style={{ background: GRAD, border: 'none', color: '#fff', fontWeight: 700, fontSize: 15, padding: '13px 28px', borderRadius: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 6px 24px rgba(14,165,233,0.3)', transition: 'opacity 0.2s' }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
+              Accéder à la plateforme <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      </section>
 
-      <AnimatedDivider />
+      {/* ── TESTIMONIALS ───────────────────────────────────────────── */}
+      <section id="testimonials" style={{ padding: '80px 24px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <SectionBadge color="#f59e0b" label="Témoignages" />
+            <h2 style={{ fontSize: 'clamp(28px,4vw,44px)', fontWeight: 800, letterSpacing: '-0.8px', margin: '0 0 16px' }}>
+              La confiance de{' '}
+              <span style={{ background: GRAD, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>500+ cliniques</span>
+            </h2>
+            <p style={{ fontSize: 16, color: '#64748b', maxWidth: 480, margin: '0 auto' }}>
+              Découvrez ce que nos clients disent de leur expérience avec CliniqueStock.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 20 }} className="cs-test-grid">
+            {testimonials.map(t => <TestiCard key={t.name} t={t} />)}
+          </div>
+        </div>
+      </section>
 
-      {/* ── CTA final ── */}
-      <Box sx={{ py: { xs: 10, md: 14 }, position: 'relative', overflow: 'hidden' }}>
-        <Box sx={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(160deg, #1565C0 0%, #2196F3 60%, #0D47A1 100%)',
-        }} />
-        <motion.div
-          animate={{ scale: [1, 1.1, 1], rotate: [0, 5, 0] }}
-          transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
-          style={{
-            position: 'absolute', top: -100, right: -100,
-            width: 400, height: 400, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.06)',
-          }}
-        />
-        <motion.div
-          animate={{ scale: [1, 1.08, 1], rotate: [0, -3, 0] }}
-          transition={{ duration: 12, delay: 3, repeat: Infinity, ease: 'easeInOut' }}
-          style={{
-            position: 'absolute', bottom: -80, left: -80,
-            width: 300, height: 300, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.05)',
-          }}
-        />
-        <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
-          <motion.div variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }}>
-            <Typography variant="h3" fontWeight={900} color="white"
-              sx={{ mb: 2, letterSpacing: '-0.8px', fontSize: { xs: '1.9rem', md: '2.6rem' } }}>
-              Prêt à transformer votre gestion ?
-            </Typography>
-            <Typography variant="h6" color="rgba(255,255,255,0.75)"
-              sx={{ mb: 6, fontWeight: 400, maxWidth: 480, mx: 'auto', lineHeight: 1.7 }}>
-              Rejoignez les 500+ établissements qui font confiance à CliniqueStock.
-            </Typography>
-            <MagneticButton onClick={() => navigate('/login')} variant="white">
-              Accéder à la plateforme
-            </MagneticButton>
-          </motion.div>
-        </Container>
-      </Box>
+      {/* ── CTA FINAL ──────────────────────────────────────────────── */}
+      <section style={{ padding: '80px 24px', position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg,#0284c7,#0ea5e9,#6366f1)' }}>
+        <div style={{ position: 'absolute', top: -80, right: -80, width: 320, height: 320, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -80, left: -80, width: 320, height: 320, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+        <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center', position: 'relative' }}>
+          <h2 style={{ fontSize: 'clamp(28px,4vw,44px)', fontWeight: 800, letterSpacing: '-0.8px', color: '#fff', margin: '0 0 16px' }}>
+            Prêt à transformer votre gestion ?
+          </h2>
+          <p style={{ fontSize: 17, color: 'rgba(255,255,255,0.75)', margin: '0 0 40px', lineHeight: 1.6 }}>
+            Rejoignez les 500+ établissements qui font confiance à CliniqueStock.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => navigate('/login')} style={{ background: '#fff', border: 'none', color: '#0284c7', fontWeight: 700, fontSize: 15, padding: '13px 28px', borderRadius: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.15)', transition: 'transform 0.2s' }}
+              onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
+              onMouseLeave={e => (e.currentTarget.style.transform = 'none')}>
+              Commencer gratuitement <ArrowRight size={16} />
+            </button>
+            <button style={{ background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.9)', fontWeight: 600, fontSize: 15, padding: '12px 24px', borderRadius: 12, cursor: 'pointer', backdropFilter: 'blur(8px)', transition: 'background 0.2s' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.12)')}>
+              Contacter l'équipe
+            </button>
+          </div>
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', margin: '24px 0 0' }}>
+            Aucune carte de crédit requise · Déployé en 24h · Support inclus
+          </p>
+        </div>
+      </section>
 
-      {/* ── Footer ── */}
-      <Box sx={{ bgcolor: '#0D47A1', py: 2.5, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <Typography variant="body2" color="rgba(255,255,255,0.4)" fontSize="0.8rem">
-          © 2026 CliniqueStock — Tous droits réservés
-        </Typography>
-      </Box>
-    </Box>
+      <Footer />
+    </div>
   );
 }

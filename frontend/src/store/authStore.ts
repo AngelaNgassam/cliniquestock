@@ -1,20 +1,20 @@
 import { create } from 'zustand';
 
 interface User {
-  id: number;
-  nom: string;
+  id:     number;
+  nom:    string;
   prenom: string;
-  email: string;
-  role: string;
+  email:  string;
+  role:   string;
 }
 
 interface AuthState {
-  user: User | null;
-  token: string | null;
-  role: string | null;
+  user:            User | null;
+  token:           string | null;
+  role:            string | null;
   isAuthenticated: boolean;
-  setAuth: (user: User, token: string, role: string) => void;
-  logout: () => void;
+  setAuth:         (user: User, token: string, role: string) => void;
+  logout:          () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -24,11 +24,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: !!localStorage.getItem('access_token'),
 
   setAuth: (user, token, role) => {
-    // ✅ Persister dans localStorage ET dans Zustand
-    localStorage.setItem('access_token', token);
-    localStorage.setItem('refresh_token', token);
-    localStorage.setItem('role', role);
-    localStorage.setItem('user', JSON.stringify(user));
+    localStorage.setItem('access_token',  token);
+    localStorage.setItem('refresh_token', token);   // ⚠️ stocker le vrai refresh si disponible
+    localStorage.setItem('role',          role);
+    localStorage.setItem('user',          JSON.stringify(user));
     set({ user, token, role, isAuthenticated: true });
   },
 

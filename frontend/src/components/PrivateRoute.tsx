@@ -1,25 +1,24 @@
 import { Navigate, useLocation } from 'react-router-dom';
+import { useRole } from '../hooks/useRole';
 
 interface Props {
-  children: React.ReactNode;
-  requiredRole?: string;
+  children:  React.ReactNode;
+  adminOnly?: boolean;
 }
 
-export default function PrivateRoute({ children, requiredRole }: Props) {
-  const location = useLocation();
+export default function PrivateRoute({ children, adminOnly = false }: Props) {
+  const location               = useLocation();
+  const token                  = localStorage.getItem('access_token');
+  const { isAdmin, isPharmacien } = useRole();
 
-  // ✅ Vérifier token ET role depuis localStorage (source de vérité)
-  const token = localStorage.getItem('access_token');
-  const role  = localStorage.getItem('role');
-
-  // Pas de token → rediriger vers login en mémorisant la page demandée
+  // Pas connecté → login
   if (!token) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Role insuffisant
-  if (requiredRole && role !== requiredRole) {
-    return <Navigate to="/admin" replace />;
+  // Page réservée admin mais utilisateur est pharmacien → inventaire
+  if (adminOnly && isPharmacien) {
+    return <Navigate to="/admin/inventaire" replace />;
   }
 
   return <>{children}</>;
