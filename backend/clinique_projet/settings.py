@@ -57,12 +57,14 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
+    'social_django',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'social_django.middleware.SocialAuthExceptionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -150,12 +152,12 @@ EMAIL_HOST          = 'smtp.gmail.com'
 EMAIL_PORT          = 587
 EMAIL_USE_TLS       = True
 EMAIL_HOST_USER     = config('EMAIL_HOST_USER',     default='ngassamangela2@gmail.com')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='isjtztuxhwsgmmdy')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL  = config('EMAIL_HOST_USER',     default='ngassamangela2@gmail.com')
 
 # ── SMS / WhatsApp Infobip ────────────────────────────────────────────────────
-INFOBIP_BASE_URL  = config('INFOBIP_BASE_URL',  default='3dd1kw.api.infobip.com')
-INFOBIP_API_KEY   = config('INFOBIP_API_KEY',   default='207dd5d45c39080d383b5455436e7377-b1830e88-e762-41df-9b6a-28b7d4547924')
+INFOBIP_BASE_URL  = config('INFOBIP_BASE_URL')
+INFOBIP_API_KEY   = config('INFOBIP_API_KEY')
 INFOBIP_SENDER_SMS        = config('INFOBIP_SENDER_SMS',        default='CliniqueStock')
 INFOBIP_SENDER_WHATSAPP   = config('INFOBIP_SENDER_WHATSAPP',   default='676849422')   # ton numéro WA enregistré
 INFOBIP_WA_TEMPLATE_NAME  = config('INFOBIP_WA_TEMPLATE_NAME',  default='test_whatsapp_template_name')
@@ -165,3 +167,43 @@ INFOBIP_WA_TEMPLATE_LANG  = config('INFOBIP_WA_TEMPLATE_LANG',  default='fr')
 # Media files (uploads)
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# ─── Coller ces blocs à la fin de settings.py ─────────────────────────────────
+ 
+AUTHENTICATION_BACKENDS = [
+    'social_core.backends.google.GoogleOAuth2',
+    'social_core.backends.microsoft.MicrosoftOAuth2',
+    'django.contrib.auth.backends.ModelBackend',
+]
+ 
+# ── Google OAuth2 ──────────────────────────────────────────────────────────────
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY    = config('GOOGLE_CLIENT_ID')
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = config('GOOGLE_CLIENT_SECRET')
+SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE  = [
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid',
+]
+ 
+# ── Microsoft OAuth2 ───────────────────────────────────────────────────────────
+SOCIAL_AUTH_MICROSOFT_OAUTH2_KEY      = config('MICROSOFT_CLIENT_ID',     default='')
+SOCIAL_AUTH_MICROSOFT_OAUTH2_SECRET   = config('MICROSOFT_CLIENT_SECRET', default='')
+SOCIAL_AUTH_MICROSOFT_OAUTH2_TENANT   = 'common'   # accepte tous les comptes MS
+SOCIAL_AUTH_MICROSOFT_OAUTH2_SCOPE    = ['openid', 'email', 'profile', 'User.Read']
+ 
+# ── Pipeline social-auth ───────────────────────────────────────────────────────
+SOCIAL_AUTH_PIPELINE = (
+    'social_core.pipeline.social_auth.social_details',
+    'social_core.pipeline.social_auth.social_uid',
+    'social_core.pipeline.social_auth.auth_allowed',
+    'social_core.pipeline.social_auth.social_user',
+    'social_core.pipeline.user.get_username',
+    'social_core.pipeline.user.create_user',
+    'cliniqueApp.users.pipeline.set_role_and_profile',   # ← notre pipeline custom
+    'social_core.pipeline.social_auth.associate_user',
+    'social_core.pipeline.social_auth.load_extra_data',
+    'social_core.pipeline.user.user_details',
+)
+ 
+SOCIAL_AUTH_USER_MODEL = 'users.Utilisateur'
