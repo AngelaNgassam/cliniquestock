@@ -6,6 +6,14 @@ from .views import (
 )
 from .social_views import GoogleLoginView, MicrosoftLoginView
 
+from .password_reset_views import (
+    PasswordResetRequestView,
+    PasswordResetVerifyOTPView,
+    PasswordResetValidateLinkView,
+    PasswordResetConfirmView,
+)
+
+
 urlpatterns = [
     path('register/', RegisterView.as_view(),     name='auth_register'),
     path('login/',    LoginView.as_view(),         name='auth_login'),
@@ -25,4 +33,12 @@ urlpatterns = [
     
     path('social/google/',    GoogleLoginView.as_view()),
     path('social/microsoft/', MicrosoftLoginView.as_view()),
+    
+    # Dans urlpatterns, ajoute :
+    path('password-reset/request/',       PasswordResetRequestView.as_view()),
+    path('password-reset/verify-otp/',    PasswordResetVerifyOTPView.as_view()),
+    path('password-reset/validate-link/', PasswordResetValidateLinkView.as_view()),
+    path('password-reset/confirm/',       PasswordResetConfirmView.as_view()),
+    
+    
 ]
