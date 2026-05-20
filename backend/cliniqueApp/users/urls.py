@@ -4,6 +4,7 @@ from .views import (
     AdminOnlyView, PharmacienOnlyView, AdminOuPharmacienView,
     UtilisateurListView, UtilisateurDetailView, ToggleStatutView,
 )
+from .social_views import GoogleLoginView, MicrosoftLoginView
 
 urlpatterns = [
     path('register/', RegisterView.as_view(),     name='auth_register'),
@@ -21,4 +22,7 @@ urlpatterns = [
     path('test/admin/',      AdminOnlyView.as_view(),         name='test_admin'),
     path('test/pharmacien/', PharmacienOnlyView.as_view(),    name='test_pharmacien'),
     path('test/both/',       AdminOuPharmacienView.as_view(), name='test_both'),
+    
+    path('social/google/',    GoogleLoginView.as_view()),
+    path('social/microsoft/', MicrosoftLoginView.as_view()),
 ]

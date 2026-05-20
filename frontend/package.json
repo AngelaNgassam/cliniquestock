@@ -10,12 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.11.0",
+    "@azure/msal-react": "^5.4.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource/inter": "^5.2.8",
     "@mui/icons-material": "^5.18.0",
     "@mui/material": "^5.18.0",
     "@mui/x-data-grid": "^7.29.12",
+    "@react-oauth/google": "^0.13.5",
     "@tanstack/react-router": "^1.169.2",
     "axios": "^1.13.6",
     "framer-motion": "^12.38.0",
