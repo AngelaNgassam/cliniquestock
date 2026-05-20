@@ -7,6 +7,8 @@ import LandingPage            from './pages/LandingPage';
 import LoginPage              from './pages/LoginPage';
 import PrivateRoute           from './components/PrivateRoute';
 import MainLayout             from './components/layout/MainLayout';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage  from './pages/ResetPasswordPage';
 
 // Pages communes (admin + pharmacien)
 import InventairePage         from './pages/admin/InventairePage';
@@ -33,6 +35,8 @@ export default function App() {
           {/* ── Publiques ── */}
           <Route path="/"      element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password"  element={<ResetPasswordPage />} />
 
           {/* ── Zone protégée — même layout pour admin ET pharmacien ── */}
           <Route

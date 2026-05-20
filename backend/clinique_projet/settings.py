@@ -207,3 +207,6 @@ SOCIAL_AUTH_PIPELINE = (
 )
  
 SOCIAL_AUTH_USER_MODEL = 'users.Utilisateur'
+
+FRONTEND_URL = 'http://localhost:5173'
+

@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-
+from django.utils import timezone as tz
 
 #  MANAGER 
 class UtilisateurManager(BaseUserManager):
@@ -113,3 +113,28 @@ class Pharmacien(models.Model):
 
     def __str__(self):
         return f"Pharmacien - {self.utilisateur.email}"
+    
+    
+    # ── Ajouter à la fin de backend/cliniqueApp/users/models.py ──────────────────
+
+# ─── OTP RÉINITIALISATION MOT DE PASSE ───────────────────────────────────────
+class PasswordResetOTP(models.Model):
+    user       = models.ForeignKey(
+                     Utilisateur,
+                     on_delete=models.CASCADE,
+                     related_name='password_reset_otps',
+                 )
+    otp        = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    verified   = models.BooleanField(default=False)
+    attempts   = models.IntegerField(default=0)
+ 
+    class Meta:
+        db_table = 'password_reset_otp'
+ 
+    def is_expired(self) -> bool:
+        return tz.now() > self.expires_at
+ 
+    def __str__(self):
+        return f"OTP {self.otp} — {self.user.email}"
