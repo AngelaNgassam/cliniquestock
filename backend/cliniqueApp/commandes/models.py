@@ -53,7 +53,7 @@ class Commande(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(montant_total__gte=0),
+                check=models.Q(montant_total__gte=0),  # ✅ Changé 'condition' en 'check'
                 name='commande_montant_total_gte_0',
             ),
         ]
@@ -93,11 +93,11 @@ class LigneCommande(models.Model):
                 name='unique_ligne_commande_par_medicament',
             ),
             models.CheckConstraint(
-                condition=models.Q(prix_achat_fournisseur__gte=0),
+                check=models.Q(prix_achat_fournisseur__gte=0),  # ✅ Changé 'condition' en 'check'
                 name='ligne_commande_prix_achat_gte_0',
             ),
             models.CheckConstraint(
-                condition=models.Q(quantite_recue__lte=models.F('quantite_commandee')),
+                check=models.Q(quantite_recue__lte=models.F('quantite_commandee')),  # ✅ Changé 'condition' en 'check'
                 name='ligne_commande_recue_lte_commandee',
             ),
         ]
