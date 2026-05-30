@@ -132,6 +132,11 @@ jobs:
         run: |
           rsync -avz --delete ./frontend/dist/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/public_html/ngnipicba/cliniquestock/
 
+      - name: Inject Production .env
+        working-directory: ./backend
+        run: |
+          echo "${{ secrets.PROD_ENV_FILE }}" > .env
+
       - name: Deploy Backend to Python App via Rsync
         run: |
           rsync -avz --delete --exclude 'venv' --exclude '__pycache__' --exclude 'media' --exclude 'db.sqlite3' ./backend/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
