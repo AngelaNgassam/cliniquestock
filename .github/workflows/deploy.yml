@@ -45,7 +45,7 @@ jobs:
       - name: Lint Frontend
         working-directory: ./frontend
         run: npm run lint
-        continue-on-error: true # Ignorera les erreurs de style frontend
+        continue-on-error: true
 
       # --- Backend CI ---
       - name: Setup Python
@@ -67,7 +67,7 @@ jobs:
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 . --count --exit-zero --max-complexity=15 --max-line-length=120 --statistics
-        continue-on-error: true # Ignorera les erreurs de style backend
+        continue-on-error: true
 
       - name: Check Django Project
         working-directory: ./backend
@@ -79,7 +79,7 @@ jobs:
           DB_NAME: cdiu8226_cliniques_db
           SECRET_KEY: test-secret-key-for-github-actions
         run: python manage.py check
-        continue-on-error: true # Ignorera l'erreur sur les CheckConstraint ou modules manquants en CI
+        continue-on-error: true
 
       - name: Run Backend Tests
         working-directory: ./backend
@@ -91,10 +91,9 @@ jobs:
           DB_NAME: cdiu8226_cliniques_db
           SECRET_KEY: test-secret-key-for-github-actions
         run: python manage.py test
-        continue-on-error: true # Ignorera les tests qui échouent
+        continue-on-error: true
 
   deploy:
-    # Suppression de "needs: lint-and-test" pour que le déploiement démarre directement
     runs-on: ubuntu-latest
     
     steps:
@@ -104,7 +103,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '22' # ✅ Changé ici aussi pour que le build Vite s'exécute avec Node 22
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -146,22 +145,11 @@ jobs:
       - name: Execute post-deploy scripts (Install dependencies, Migrate, Restart)
         run: |
           ssh ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }} << 'EOF'
-            # Activer l'environnement virtuel créé par cPanel
             source /home/${{ secrets.O2SWITCH_USER }}/virtualenv/apps/cliniquestock_backend/3.12/bin/activate
-            
-            # Aller dans le dossier du backend
             cd /home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
-            
-            # Installer les paquets
             pip install -r requirements.txt
-            
-            # Migrer la base de données
             python manage.py migrate
-            
-            # Collecter les fichiers statiques (Django admin)
             python manage.py collectstatic --noinput
-            
-            # Redémarrer Passenger
             mkdir -p tmp
             touch tmp/restart.txt
           EOF
