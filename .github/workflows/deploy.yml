@@ -1,0 +1,76 @@
+name: Deploy to O2switch
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://ngnipicba.cdwfs.net/cliniquestock-api/api/v1' }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.O2SWITCH_SSH_KEY }}
+
+      - name: Add O2switch to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.O2SWITCH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Frontend to public_html via Rsync
+        run: |
+          rsync -avz --delete ./frontend/dist/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/public_html/ngnipicba/cliniquestock/
+
+      - name: Deploy Backend to Python App via Rsync
+        run: |
+          rsync -avz --delete --exclude 'venv' --exclude '__pycache__' --exclude 'media' --exclude 'db.sqlite3' ./backend/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
+
+      - name: Execute post-deploy scripts (Install dependencies, Migrate, Restart)
+        run: |
+          ssh ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }} << 'EOF'
+            # Activer l'environnement virtuel créé par cPanel
+            source /home/${{ secrets.O2SWITCH_USER }}/virtualenv/apps/cliniquestock_backend/3.11/bin/activate
+            
+            # Aller dans le dossier du backend
+            cd /home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
+            
+            # Installer les paquets
+            pip install -r requirements.txt
+            
+            # Migrer la base de données
+            python manage.py migrate
+            
+            # Collecter les fichiers statiques (Django admin)
+            python manage.py collectstatic --noinput
+            
+            # Redémarrer Passenger
+            mkdir -p tmp
+            touch tmp/restart.txt
+          EOF

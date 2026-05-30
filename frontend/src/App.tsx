@@ -30,7 +30,7 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
+      <BrowserRouter basename="/cliniquestock">
         <Routes>
           {/* ── Publiques ── */}
           <Route path="/"      element={<LandingPage />} />

@@ -18,7 +18,7 @@ def create_admin_sql(nom, prenom, email, password):
             # Insérer l'utilisateur
             cursor.execute("""
                 INSERT INTO utilisateur 
-                (nom, prenom, email, mot_de_passe, role, est_actif, date_creation)
+                (nom, prenom, email, password, role, est_actif, date_creation)
                 VALUES (%s, %s, %s, %s, %s, %s, NOW())
                 RETURNING id;
             """, [nom, prenom, email, hashed_password, 'ADMINISTRATEUR', True])
@@ -51,7 +51,7 @@ def create_pharmacien_sql(nom, prenom, email, password, matricule, service):
             # Insérer l'utilisateur
             cursor.execute("""
                 INSERT INTO utilisateur 
-                (nom, prenom, email, mot_de_passe, role, est_actif, date_creation)
+                (nom, prenom, email, password, role, est_actif, date_creation)
                 VALUES (%s, %s, %s, %s, %s, %s, NOW())
                 RETURNING id;
             """, [nom, prenom, email, hashed_password, 'PHARMACIEN', True])

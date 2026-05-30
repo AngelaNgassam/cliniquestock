@@ -27,7 +27,7 @@ DEBUG = config('DEBUG', cast=bool, default=True)
 ALLOWED_HOSTS = config(
     'ALLOWED_HOSTS',
     cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
-    default=''
+    default='ngnipicba.cdwfs.net,localhost,127.0.0.1'
 )
 
 SIMPLE_JWT = {
@@ -120,6 +120,7 @@ USE_I18N      = True
 USE_TZ        = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
@@ -141,6 +142,7 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
+    "https://ngnipicba.cdwfs.net",
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -208,5 +210,5 @@ SOCIAL_AUTH_PIPELINE = (
  
 SOCIAL_AUTH_USER_MODEL = 'users.Utilisateur'
 
-FRONTEND_URL = 'http://localhost:5173'
+FRONTEND_URL = config('FRONTEND_URL', default='https://ngnipicba.cdwfs.net/cliniquestock')
 
