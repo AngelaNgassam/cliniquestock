@@ -50,7 +50,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: backend/requirements.txt
 
@@ -145,7 +145,7 @@ jobs:
         run: |
           ssh ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }} << 'EOF'
             # Activer l'environnement virtuel créé par cPanel
-            source /home/${{ secrets.O2SWITCH_USER }}/virtualenv/apps/cliniquestock_backend/3.11/bin/activate
+            source /home/${{ secrets.O2SWITCH_USER }}/virtualenv/apps/cliniquestock_backend/3.12/bin/activate
             
             # Aller dans le dossier du backend
             cd /home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
