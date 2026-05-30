@@ -10,18 +10,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveConstraint(
-            model_name='medicament',
-            name='medicament_prix_unitaire_gte_0',
-        ),
-        migrations.RemoveConstraint(
-            model_name='medicament',
-            name='medicament_prix_unitaire_gte_0',
-        ),
-        migrations.RemoveIndex(
-            model_name='medicament',
-            name='medicament_seuil_idx',
-        ),
         migrations.RemoveIndex(
             model_name='medicament',
             name='medicament_seuil_idx',
@@ -30,16 +18,6 @@ class Migration(migrations.Migration):
             model_name='medicament',
             new_name='med_nom_idx',
             old_name='medicament_nom_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='medicament',
-            new_name='med_nom_idx',
-            old_name='medicament_nom_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='medicament',
-            new_name='med_actif_idx',
-            old_name='medicament_actif_idx',
         ),
         migrations.RenameIndex(
             model_name='medicament',

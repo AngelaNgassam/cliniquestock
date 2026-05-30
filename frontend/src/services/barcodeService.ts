@@ -38,7 +38,9 @@ export async function fetchMedicamentByBarcode(
         source:                     'catalogue',
       };
     }
-  } catch (_) {}
+  } catch (error) {
+    console.error('Erreur API catalogue:', error);
+  }
 
   // ── Étape 2 : essayer RxNorm (DCI universelle) ─────────────────────────────
   // Utile pour Paracétamol, Amoxicilline, Ibuprofène... noms génériques
@@ -56,7 +58,9 @@ export async function fetchMedicamentByBarcode(
         source:         'rxnorm',
       };
     }
-  } catch (_) {}
+  } catch (error) {
+    console.error('Erreur RxNorm:', error);
+  }
 
   // ── Étape 3 : rien trouvé, juste le code ──────────────────────────────────
   return { code_barres: code, source: 'inconnu' };

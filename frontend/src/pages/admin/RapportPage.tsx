@@ -117,7 +117,6 @@ export default function RapportPage() {
   const [periode, setPeriode] = useState<'7j' | '30j' | 'annee'>('30j');
 
   useEffect(() => {
-    setLoading(true);
     dashboardService.getData()
       .then(r => { setData(r.data); setLoading(false); })
       .catch(() => {

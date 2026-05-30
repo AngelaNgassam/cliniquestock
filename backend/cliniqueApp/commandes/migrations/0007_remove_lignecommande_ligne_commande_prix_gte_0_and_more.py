@@ -10,14 +10,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveConstraint(
-            model_name='lignecommande',
-            name='ligne_commande_prix_gte_0',
-        ),
-        migrations.RemoveConstraint(
-            model_name='lignecommande',
-            name='ligne_commande_prix_gte_0',
-        ),
         migrations.AlterField(
             model_name='lignecommande',
             name='prix_achat_fournisseur',

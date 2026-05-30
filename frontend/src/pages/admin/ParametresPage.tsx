@@ -201,9 +201,7 @@ function OngletNotifications() {
     setSaving(false);
   };
 
-  const NotifRow = ({ label, desc, keyEmail, keySms }: {
-    label: string; desc: string; keyEmail: string; keySms: string;
-  }) => (
+  const renderNotifRow = (label: string, desc: string, keyEmail: string, keySms: string) => (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       py: 2, borderBottom: '1px solid #F0F4FF' }}>
       <Box>
@@ -233,15 +231,15 @@ function OngletNotifications() {
         <Typography fontSize={12} color="text.secondary" sx={{ mb: 2 }}>
           Choisissez comment être informé des variations de stock critiques.
         </Typography>
-        <NotifRow label="Stocks Faibles"
-          desc="Notifier quand un médicament passe sous le seuil d'alerte."
-          keyEmail="stocks_faibles_email" keySms="stocks_faibles_sms" />
-        <NotifRow label="Dates de Péremption"
-          desc="Alerte pour les produits expirant dans les 30 jours."
-          keyEmail="peremption_email" keySms="peremption_sms" />
-        <NotifRow label="Retards de Livraison"
-          desc="Alerte si un bon de commande dépasse la date prévue de 48h."
-          keyEmail="retards_livraison_email" keySms="retards_livraison_sms" />
+        {renderNotifRow("Stocks Faibles",
+          "Notifier quand un médicament passe sous le seuil d'alerte.",
+          "stocks_faibles_email", "stocks_faibles_sms")}
+        {renderNotifRow("Dates de Péremption",
+          "Alerte pour les produits expirant dans les 30 jours.",
+          "peremption_email", "peremption_sms")}
+        {renderNotifRow("Retards de Livraison",
+          "Alerte si un bon de commande dépasse la date prévue de 48h.",
+          "retards_livraison_email", "retards_livraison_sms")}
       </Card>
       <Card elevation={0} sx={{ border: '1px solid #E3F2FD', borderRadius: 3, p: 3, mb: 3 }}>
         <Typography fontWeight={700} color="#0D47A1" fontSize={15} sx={{ mb: 2 }}>
