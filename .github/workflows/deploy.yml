@@ -100,6 +100,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Récupère l'historique complet pour fiabiliser le tracking des deltas
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -120,7 +122,7 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
 
-      # --- Déploiement du Frontend via FTP ---
+      # --- Déploiement du Frontend via FTP (Optimisé) ---
       - name: Deploy Frontend to public_html via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -128,8 +130,8 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./frontend/dist/
-          # Chemin relatif à la racine de votre connexion FTP
           server-dir: public_html/ngnipicba/cliniquestock/
+          state-name: .ftp-deploy-frontend.json # Stocke l'état pour ne pousser que les modifications
           dangerous-clean-slate: false
 
       # --- Préparation du Backend ---
@@ -138,14 +140,13 @@ jobs:
         run: |
           echo "${{ secrets.PROD_ENV_FILE }}" > .env
 
-      # Création locale du dossier tmp et du fichier de redémarrage pour Passenger
       - name: Prepare Passenger Restart File
         working-directory: ./backend
         run: |
           mkdir -p tmp
           touch tmp/restart.txt
 
-      # --- Déploiement du Backend via FTP ---
+      # --- Déploiement du Backend via FTP (Ultra Optimisé) ---
       - name: Deploy Backend to Python App via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -154,11 +155,16 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./backend/
           server-dir: apps/cliniquestock_backend/
+          state-name: .ftp-deploy-backend.json # Évite la re-vérification complète de l'arborescence distante
           dangerous-clean-slate: false
-          # On exclut l'environnement virtuel local s'il existe et les fichiers inutiles
           exclude: |
-            **/venv/**
             **/.git/**
             **/.github/**
+            **/venv/**
+            **/virtualenv/**
             **/__pycache__/**
+            **/*.pyc
+            **/*.pyo
             **/db.sqlite3
+            **/.pytest_cache/**
+            **/tests/**
