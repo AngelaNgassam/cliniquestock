@@ -152,12 +152,12 @@ EMAIL_HOST          = 'smtp.gmail.com'
 EMAIL_PORT          = 587
 EMAIL_USE_TLS       = True
 EMAIL_HOST_USER     = config('EMAIL_HOST_USER',     default='ngassamangela2@gmail.com')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL  = config('EMAIL_HOST_USER',     default='ngassamangela2@gmail.com')
 
 # ── SMS / WhatsApp Infobip ────────────────────────────────────────────────────
-INFOBIP_BASE_URL  = config('INFOBIP_BASE_URL')
-INFOBIP_API_KEY   = config('INFOBIP_API_KEY')
+INFOBIP_BASE_URL  = config('INFOBIP_BASE_URL',  default='')
+INFOBIP_API_KEY   = config('INFOBIP_API_KEY',   default='')
 INFOBIP_SENDER_SMS        = config('INFOBIP_SENDER_SMS',        default='CliniqueStock')
 INFOBIP_SENDER_WHATSAPP   = config('INFOBIP_SENDER_WHATSAPP',   default='676849422')   # ton numéro WA enregistré
 INFOBIP_WA_TEMPLATE_NAME  = config('INFOBIP_WA_TEMPLATE_NAME',  default='test_whatsapp_template_name')
@@ -178,8 +178,8 @@ AUTHENTICATION_BACKENDS = [
 ]
  
 # ── Google OAuth2 ──────────────────────────────────────────────────────────────
-SOCIAL_AUTH_GOOGLE_OAUTH2_KEY    = config('GOOGLE_CLIENT_ID')
-SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = config('GOOGLE_CLIENT_SECRET')
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY    = config('GOOGLE_CLIENT_ID',     default='')
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = config('GOOGLE_CLIENT_SECRET',  default='')
 SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE  = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',

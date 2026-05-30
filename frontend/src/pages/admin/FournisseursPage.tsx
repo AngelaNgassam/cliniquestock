@@ -273,7 +273,6 @@ function ToutesCommandesDialog({ fournisseur, open, onClose }: {
 
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
     api.get(`/fournisseurs/${fournisseur.id}/historique/`)
       .then(r => setCommandes(r.data.commandes || []))
       .catch(() => setCommandes([]))
