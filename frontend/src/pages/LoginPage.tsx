@@ -299,7 +299,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || ''}>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || 'placeholder'}>
       <LoginForm />
     </GoogleOAuthProvider>
   );
