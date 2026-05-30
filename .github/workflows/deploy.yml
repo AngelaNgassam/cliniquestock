@@ -129,11 +129,11 @@ jobs:
 
       - name: Whitelist GitHub Runner IP on O2switch Firewall
         run: |
-          curl -H "Authorization: cpanel ${{ secrets.O2SWITCH_USER }}:${{ secrets.O2SWITCH_API_TOKEN }}" \
+          curl -k -H "Authorization: cpanel ${{ secrets.O2SWITCH_USER }}:${{ secrets.O2SWITCH_API_TOKEN }}" \
           "https://${{ secrets.O2SWITCH_HOST }}:2083/execute/FileAuth/list_authorizations" \
           --data-urlencode "ip=${{ steps.ip.outputs.runner_ip }}" \
           --data-urlencode "service=ssh" \
-          --data-urlencode "action=allow" || echo "Tentative d'ouverture de l'IP via l'API"
+          --data-urlencode "action=allow"
           # Petite pause de 5 secondes pour laisser le pare-feu appliquer la règle
           sleep 5
 
@@ -182,7 +182,7 @@ jobs:
       - name: Remove GitHub Runner IP from Whitelist
         if: always()
         run: |
-          curl -H "Authorization: cpanel ${{ secrets.O2SWITCH_USER }}:${{ secrets.O2SWITCH_API_TOKEN }}" \
+          curl -k -H "Authorization: cpanel ${{ secrets.O2SWITCH_USER }}:${{ secrets.O2SWITCH_API_TOKEN }}" \
           "https://${{ secrets.O2SWITCH_HOST }}:2083/execute/FileAuth/list_authorizations" \
           --data-urlencode "ip=${{ steps.ip.outputs.runner_ip }}" \
           --data-urlencode "service=ssh" \
