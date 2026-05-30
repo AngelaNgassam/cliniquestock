@@ -328,7 +328,7 @@ export default function DashboardPage() {
     setExportLoading(true);
     try {
       await exportDashboardPDF(data, userName);
-    } catch { } finally { setExportLoading(false); }
+    } catch (err) { console.error('Export failed', err); } finally { setExportLoading(false); }
   };
 
   const heure = new Date().getHours();

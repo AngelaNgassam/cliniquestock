@@ -74,9 +74,9 @@ jobs:
         env:
           DB_HOST: localhost
           DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgrespassword
-          DB_NAME: cliniquestock
+          DB_USER: cdiu8226_djiatou
+          DB_PASSWORD: Ngnipicba@12345
+          DB_NAME: cdiu8226_cliniques_db
           SECRET_KEY: test-secret-key-for-github-actions
         run: python manage.py check
 
@@ -85,9 +85,9 @@ jobs:
         env:
           DB_HOST: localhost
           DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgrespassword
-          DB_NAME: cliniquestock
+          DB_USER: cdiu8226_djiatou
+          DB_PASSWORD: Ngnipicba@12345
+          DB_NAME: cdiu8226_cliniques_db
           SECRET_KEY: test-secret-key-for-github-actions
         run: python manage.py test
 
