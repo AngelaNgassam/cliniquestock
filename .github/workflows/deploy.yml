@@ -124,11 +124,14 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.O2SWITCH_SSH_KEY }}
 
-      # --- L'étape problématique "Add O2switch to known_hosts" a été retirée ---
+      - name: Add O2switch to known_hosts (Port 22)
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.O2SWITCH_HOST }} >> ~/.ssh/known_hosts || true
 
       - name: Deploy Frontend to public_html via Rsync
         run: |
-          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no -p 2222" ./frontend/dist/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/public_html/ngnipicba/cliniquestock/
+          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./frontend/dist/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/public_html/ngnipicba/cliniquestock/
 
       - name: Inject Production .env
         working-directory: ./backend
@@ -137,27 +140,8 @@ jobs:
 
       - name: Deploy Backend to Python App via Rsync
         run: |
-          rsync -avz --delete --exclude 'venv' --exclude '__pycache__' --exclude 'media' --exclude 'db.sqlite3' -e "ssh -o StrictHostKeyChecking=no -p 2222" ./backend/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
+          rsync -avz --delete --exclude 'venv' --exclude '__pycache__' --exclude 'media' --exclude 'db.sqlite3' -e "ssh -o StrictHostKeyChecking=no" ./backend/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
 
       - name: Execute post-deploy scripts (Install dependencies, Migrate, Restart)
         run: |
-          ssh -o StrictHostKeyChecking=no -p 2222 ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }} << 'EOF'
-            # Activer l'environnement virtuel créé par cPanel
-            source /home/${{ secrets.O2SWITCH_USER }}/virtualenv/apps/cliniquestock_backend/3.12/bin/activate
-            
-            # Aller dans le dossier du backend
-            cd /home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
-            
-            # Installer les paquets
-            pip install -r requirements.txt
-            
-            # Migrer la base de données
-            python manage.py migrate
-            
-            # Collecter les fichiers statiques (Django admin)
-            python manage.py collectstatic --noinput
-            
-            # Redémarrer Passenger
-            mkdir -p tmp
-            touch tmp/restart.txt
-          EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.O
