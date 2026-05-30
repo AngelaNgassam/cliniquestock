@@ -144,4 +144,23 @@ jobs:
 
       - name: Execute post-deploy scripts (Install dependencies, Migrate, Restart)
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.O
+          ssh -o StrictHostKeyChecking=no ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }} << 'EOF'
+            # Activer l'environnement virtuel créé par cPanel
+            source /home/${{ secrets.O2SWITCH_USER }}/virtualenv/apps/cliniquestock_backend/3.12/bin/activate
+            
+            # Aller dans le dossier du backend
+            cd /home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
+            
+            # Installer les paquets
+            pip install -r requirements.txt
+            
+            # Migrer la base de données
+            python manage.py migrate
+            
+            # Collecter les fichiers statiques (Django admin)
+            python manage.py collectstatic --noinput
+            
+            # Redémarrer Passenger
+            mkdir -p tmp
+            touch tmp/restart.txt
+          EOF
