@@ -33,11 +33,11 @@ class LotStock(models.Model):
                 name="unique_lot_par_medicament",
             ),
             models.CheckConstraint(
-                condition=models.Q(prix_achat__gte=0),
+                check=models.Q(prix_achat__gte=0),
                 name="lot_stock_prix_achat_gte_0",
             ),
             models.CheckConstraint(
-                condition=models.Q(date_peremption__gte=models.F("date_reception")),
+                check=models.Q(date_peremption__gte=models.F("date_reception")),
                 name="lot_stock_peremption_gte_reception",
             ),
         ]
