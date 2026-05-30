@@ -53,6 +53,7 @@ function VerifierModal({ alerte, open, onClose }: {
 
   useEffect(() => {
     if (!open || !alerte) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     alerteService.verifier(alerte.id)
       .then(r => { setInfo(r.data); setLoading(false); })
