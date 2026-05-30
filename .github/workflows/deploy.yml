@@ -120,31 +120,14 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
 
-      - name: Get Runner IP
-        id: ip
-        run: |
-          RUNNER_IP=$(curl -s https://api.ipify.org)
-          echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
-          echo "L'IP temporaire du Runner GitHub est : $RUNNER_IP"
-
-      - name: Whitelist GitHub Runner IP on O2switch Firewall
-        run: |
-          curl -k -H "Authorization: cpanel ${{ secrets.O2SWITCH_USER }}:${{ secrets.O2SWITCH_API_TOKEN }}" \
-          "https://${{ secrets.O2SWITCH_HOST }}:2083/execute/FileAuth/list_authorizations" \
-          --data-urlencode "ip=${{ steps.ip.outputs.runner_ip }}" \
-          --data-urlencode "service=ssh" \
-          --data-urlencode "action=allow"
-          # Petite pause de 5 secondes pour laisser le pare-feu appliquer la règle
-          sleep 5
-
-      - name: Setup SSH
+      - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.8.0
         with:
           ssh-private-key: ${{ secrets.O2SWITCH_SSH_KEY }}
 
       - name: Deploy Frontend to public_html via Rsync
         run: |
-          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15" ./frontend/dist/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/public_html/ngnipicba/cliniquestock/
+          rsync -avz --delete -e "ssh -p 22 -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./frontend/dist/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/public_html/ngnipicba/cliniquestock/
 
       - name: Inject Production .env
         working-directory: ./backend
@@ -153,11 +136,11 @@ jobs:
 
       - name: Deploy Backend to Python App via Rsync
         run: |
-          rsync -avz --delete --exclude 'venv' --exclude '__pycache__' --exclude 'media' --exclude 'db.sqlite3' -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15" ./backend/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
+          rsync -avz --delete --exclude 'venv' --exclude '__pycache__' --exclude 'media' --exclude 'db.sqlite3' -e "ssh -p 22 -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./backend/ ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }}:/home/${{ secrets.O2SWITCH_USER }}/apps/cliniquestock_backend/
 
       - name: Execute post-deploy scripts (Install dependencies, Migrate, Restart)
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }} << 'EOF'
+          ssh -p 22 -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${{ secrets.O2SWITCH_USER }}@${{ secrets.O2SWITCH_HOST }} << 'EOF'
             # Activer l'environnement virtuel créé par cPanel
             source /home/${{ secrets.O2SWITCH_USER }}/virtualenv/apps/cliniquestock_backend/3.12/bin/activate
             
@@ -173,17 +156,7 @@ jobs:
             # Collecter les fichiers statiques (Django admin)
             python manage.py collectstatic --noinput
             
-            # Redémarrer Passenger
+            # Redémarrer l'application (Passenger)
             mkdir -p tmp
             touch tmp/restart.txt
           EOF
-
-      # --- Nettoyage de sécurité : on retire l'IP du pare-feu à la fin (Même si le build échoue avant) ---
-      - name: Remove GitHub Runner IP from Whitelist
-        if: always()
-        run: |
-          curl -k -H "Authorization: cpanel ${{ secrets.O2SWITCH_USER }}:${{ secrets.O2SWITCH_API_TOKEN }}" \
-          "https://${{ secrets.O2SWITCH_HOST }}:2083/execute/FileAuth/list_authorizations" \
-          --data-urlencode "ip=${{ steps.ip.outputs.runner_ip }}" \
-          --data-urlencode "service=ssh" \
-          --data-urlencode "action=remove" || echo "Nettoyage de l'IP terminé"
